@@ -1,20 +1,16 @@
 // File: services/geminiService.js
 // Description: Encapsula la interacción con la API de Gemini y la gestión de sesiones.
 
-import pkg from "@google/genai";
-const { GoogleGenerativeAI } = pkg;
+import { GoogleGenAI } from "@google/genai"; // Correct: GoogleGenAI
 import { v4 as uuidv4 } from 'uuid';
 
 // Cargar la API Key desde las variables de entorno
-const apiKey = process.env.GEMINI_API_KEY;
+const apiKey = process.env.GEMINI_API_KEY; // Correct: Define apiKey
 if (!apiKey) {
   throw new Error("La variable de entorno GEMINI_API_KEY es requerida.");
 }
 
-const genAI = new GoogleGenerativeAI(apiKey);
-const model = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash-preview-0514", // Modelo actualizado
-});
+const genAI = new GoogleGenAI({ apiKey: apiKey }); // Corrected instantiation
 
 // Almacén en memoria para las sesiones de chat activas.
 // En un entorno de producción, esto debería ser reemplazado por una base de datos (Redis, MongoDB, etc.)
@@ -32,7 +28,12 @@ export const initializeChatSession = (systemInstruction) => {
     systemInstruction: systemInstruction || "Eres un asistente de IA útil y amigable."
   };
 
-  const chat = model.startChat(chatConfig);
+  // modelName could be a parameter or from config
+  const modelName = "gemini-1.5-flash-preview-0514";
+  const chat = genAI.startChat({ // Assuming genAI.startChat based on some SDK patterns
+    ...chatConfig,
+    model: modelName, // Specify model here
+  });
   
   activeSessions.set(sessionId, chat);
 

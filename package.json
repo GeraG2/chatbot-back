@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Proxy server for Gemini Chatbot",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "start": "node -r dotenv/config server.js",
     "dev": "nodemon -r dotenv/config server.js"
