@@ -1,8 +1,7 @@
 // File: services/geminiService.js
 // Description: Encapsula la interacción con la API de Gemini y la gestión de sesiones.
 
-import pkg from "@google/genai";
-const { GoogleGenerativeAI } = pkg;
+import { GoogleGenerativeAI } from "@google/genai";
 import { v4 as uuidv4 } from 'uuid';
 
 // Cargar la API Key desde las variables de entorno
@@ -18,6 +17,7 @@ const model = genAI.getGenerativeModel({
 
 // Almacén en memoria para las sesiones de chat activas.
 // En un entorno de producción, esto debería ser reemplazado por una base de datos (Redis, MongoDB, etc.)
+// TODO: PRODUCTION - Replace this in-memory session store with a persistent solution like Redis, MongoDB, or a relational database to ensure session persistence across server restarts and enable scalability.
 const activeSessions = new Map();
 
 /**
