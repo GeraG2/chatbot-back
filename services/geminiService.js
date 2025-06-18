@@ -23,16 +23,23 @@ const activeSessions = new Map();
  */
 export const initializeChatSession = (systemInstruction) => {
   const sessionId = uuidv4();
-  const chatConfig = {
-    history: [], // El historial se gestionará aquí si es necesario
-    systemInstruction: systemInstruction || "Eres un asistente de IA útil y amigable."
-  };
+  const currentSystemInstruction = systemInstruction || "Eres un asistente de IA útil y amigable.";
+
+  // History must alternate user/model roles and start with a user message.
+  // To set a system instruction, provide it as the first user message,
+  // then add a model response to make the history valid for the next user input.
+  const initialHistory = [
+    { role: "user", parts: [{ text: currentSystemInstruction }] },
+    { role: "model", parts: [{ text: "Entendido. ¿Cómo puedo ayudarte?" }] } // Placeholder model response
+  ];
 
   // modelName could be a parameter or from config
   const modelName = "gemini-1.5-flash-preview-0514";
-  const chat = genAI.startChat({ // Assuming genAI.startChat based on some SDK patterns
-    ...chatConfig,
-    model: modelName, // Specify model here
+  // Align with documented way of creating a chat session
+  const chat = genAI.chats.create({
+    history: initialHistory,
+    model: modelName,
+    // TODO: Add other config from chatConfig if necessary, e.g., safetySettings, generationConfig
   });
   
   activeSessions.set(sessionId, chat);
@@ -62,10 +69,19 @@ export const streamMessageToGemini = async (sessionId, userMessage, sendEventCal
   }
 
   try {
+    // userMessage here is expected to be a string.
+    // The sendMessageStream method from the docs takes an object: { message: string, ... }
+    // However, the Chat.sendMessageStream method documentation shows params: SendMessageParameters
+    // Let's check SendMessageParameters:
+    // It can be `string | Part | (string | Part)[] | SendMessageRequest`
+    // If it's `string`, it's a shortcut for `{ message: userMessage }` essentially.
+    // So, passing userMessage directly should be fine.
     const result = await chat.sendMessageStream(userMessage);
 
-    for await (const chunk of result.stream) {
-      const chunkText = chunk.text();
+    // Iterate directly over the result, as it's an AsyncGenerator
+    for await (const chunk of result) {
+      // Access .text as a property, not a method
+      const chunkText = chunk.text;
       // Enviar cada fragmento al cliente a través del callback
       sendEventCallback({ type: 'chunk', text: chunkText });
     }
