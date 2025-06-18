@@ -34,7 +34,7 @@ export const initializeChatSession = (systemInstruction) => {
   ];
 
   // modelName could be a parameter or from config
-  const modelName = "gemini-1.5-flash-preview-0514";
+  const modelName = "gemini-1.5-flash"; // Using latest stable model
   // Align with documented way of creating a chat session
   const chat = genAI.chats.create({
     history: initialHistory,
@@ -75,8 +75,8 @@ export const streamMessageToGemini = async (sessionId, userMessage, sendEventCal
     // Let's check SendMessageParameters:
     // It can be `string | Part | (string | Part)[] | SendMessageRequest`
     // If it's `string`, it's a shortcut for `{ message: userMessage }` essentially.
-    // So, passing userMessage directly should be fine.
-    const result = await chat.sendMessageStream(userMessage);
+    // Explicitly passing an object with a Part structure to ensure correct type.
+    const result = await chat.sendMessageStream({ message: { text: userMessage } });
 
     // Iterate directly over the result, as it's an AsyncGenerator
     for await (const chunk of result) {
