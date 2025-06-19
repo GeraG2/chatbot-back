@@ -16,6 +16,9 @@ const genAI = new GoogleGenAI({ apiKey: apiKey }); // Corrected instantiation
 // En un entorno de producción, esto debería ser reemplazado por una base de datos (Redis, MongoDB, etc.)
 const activeSessions = new Map();
 
+// Define Default System Instruction for WhatsApp users
+const DEFAULT_SYSTEM_INSTRUCTION = "Eres un asistente de IA útil y amigable.";
+
 /**
  * Inicializa una nueva sesión de chat de Gemini.
  * @param {string} systemInstruction - El contexto de entrenamiento inicial.
@@ -46,6 +49,56 @@ export const initializeChatSession = (systemInstruction) => {
   }, 3600 * 1000); // Expira en 1 hora
 
   return { sessionId, chat };
+};
+
+/**
+ * Obtiene una respuesta de Gemini para usuarios de WhatsApp (sin streaming).
+ * Gestiona sesiones de chat para cada senderId.
+ * @param {string} senderId - El ID del remitente de WhatsApp (usado como ID de sesión).
+ * @param {string} userMessage - El mensaje del usuario.
+ * @returns {Promise<string>} - La respuesta de texto de Gemini.
+ */
+export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
+  try {
+    let chat = activeSessions.get(senderId);
+    const modelName = "gemini-1.5-flash-preview-0514"; // Consistent model name
+
+    if (!chat) {
+      console.log(`Creando nueva sesión de chat para WhatsApp senderId: ${senderId}`);
+      // System instruction can be customized or made dynamic if needed
+      chat = genAI.startChat({
+        history: [],
+        systemInstruction: DEFAULT_SYSTEM_INSTRUCTION,
+        model: modelName
+      });
+      activeSessions.set(senderId, chat);
+
+      // Configurar un temporizador para limpiar la sesión después de un período de inactividad
+      // Similar al de initializeChatSession pero usando senderId
+      setTimeout(() => {
+        if (activeSessions.has(senderId)) {
+          activeSessions.delete(senderId);
+          console.log(`Sesión de WhatsApp para ${senderId} expirada y eliminada.`);
+        }
+      }, 3600 * 1000); // Expira en 1 hora (ajustar según sea necesario)
+    } else {
+      console.log(`Usando sesión de chat existente para WhatsApp senderId: ${senderId}`);
+    }
+
+    const result = await chat.sendMessage(userMessage);
+    if (result && result.response && typeof result.response.text === 'function') {
+      const responseText = result.response.text();
+      return responseText;
+    } else {
+      console.error("Respuesta inesperada de la API de Gemini:", result);
+      throw new Error("Respuesta inesperada de la API de Gemini.");
+    }
+  } catch (error) {
+    console.error(`Error al obtener respuesta de Gemini para WhatsApp senderId ${senderId}:`, error);
+    // Puedes decidir si lanzar el error o devolver un mensaje de error específico
+    // throw error; // Re-lanzar si quieres que el llamador maneje el error completo
+    return "Lo siento, no pude procesar tu solicitud en este momento."; // O un mensaje amigable
+  }
 };
 
 /**
