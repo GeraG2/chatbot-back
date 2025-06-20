@@ -6,6 +6,7 @@ import express from 'express';
 import cors from 'cors';
 // La importación de dotenv ya no es necesaria aquí.
 import chatRoutes from './routes/chatRoutes.js';
+import whatsappRoutes from './routes/whatsappRoutes.js';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -22,6 +23,7 @@ app.use(express.json());
 
 // --- Rutas ---
 app.use('/api/chat', chatRoutes);
+app.use('/api/whatsapp', whatsappRoutes);
 
 // --- Manejador de errores global (básico) ---
 app.use((err, req, res, next) => {
