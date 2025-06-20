@@ -1,7 +1,7 @@
 // File: services/geminiService.js
 // Description: Encapsula la interacción con la API de Gemini y la gestión de sesiones.
 
-import { GoogleGenAI } from "@google/genai"; // Correct: GoogleGenAI
+import { GoogleGenerativeAI } from "@google/genai"; // Correct: GoogleGenerativeAI
 import { v4 as uuidv4 } from 'uuid';
 
 // Cargar la API Key desde las variables de entorno
@@ -10,7 +10,7 @@ if (!apiKey) {
   throw new Error("La variable de entorno GEMINI_API_KEY es requerida.");
 }
 
-const genAI = new GoogleGenAI({ apiKey: apiKey }); // Corrected instantiation
+const genAI = new GoogleGenerativeAI(apiKey); // Corrected instantiation
 
 // Almacén en memoria para las sesiones de chat activas.
 // En un entorno de producción, esto debería ser reemplazado por una base de datos (Redis, MongoDB, etc.)
@@ -33,9 +33,10 @@ export const initializeChatSession = (systemInstruction) => {
 
   // modelName could be a parameter or from config
   const modelName = "gemini-1.5-flash-preview-0514";
-  const chat = genAI.startChat({ // Assuming genAI.startChat based on some SDK patterns
+  const model = genAI.getGenerativeModel({ model: modelName });
+  const chat = model.startChat({
     ...chatConfig,
-    model: modelName, // Specify model here
+    // model: modelName, // Model is specified in getGenerativeModel
   });
   
   activeSessions.set(sessionId, chat);
@@ -66,10 +67,11 @@ export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
     if (!chat) {
       console.log(`Creando nueva sesión de chat para WhatsApp senderId: ${senderId}`);
       // System instruction can be customized or made dynamic if needed
-      chat = genAI.startChat({
+      const model = genAI.getGenerativeModel({ model: modelName });
+      chat = model.startChat({
         history: [],
         systemInstruction: DEFAULT_SYSTEM_INSTRUCTION,
-        model: modelName
+        // model: modelName // Model is specified in getGenerativeModel
       });
       activeSessions.set(senderId, chat);
 
