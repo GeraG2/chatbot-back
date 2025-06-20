@@ -1,7 +1,7 @@
 // File: services/geminiService.js
 // Description: Encapsula la interacción con la API de Gemini y la gestión de sesiones.
 
-import { GoogleGenerativeAI } from "@google/genai"; // Correct: GoogleGenerativeAI
+import { GoogleGenAI } from "@google/genai"; // Correct: GoogleGenerativeAI
 import { v4 as uuidv4 } from 'uuid';
 
 // Cargar la API Key desde las variables de entorno
@@ -10,7 +10,7 @@ if (!apiKey) {
   throw new Error("La variable de entorno GEMINI_API_KEY es requerida.");
 }
 
-const genAI = new GoogleGenerativeAI(apiKey); // Corrected instantiation
+const genAI = new GoogleGenAI(apiKey); // Corrected instantiation
 
 // Almacén en memoria para las sesiones de chat activas.
 // En un entorno de producción, esto debería ser reemplazado por una base de datos (Redis, MongoDB, etc.)
@@ -32,12 +32,8 @@ export const initializeChatSession = (systemInstruction) => {
   };
 
   // modelName could be a parameter or from config
-  const modelName = "gemini-1.5-flash-preview-0514";
-  const model = genAI.getGenerativeModel({ model: modelName });
-  const chat = model.startChat({
-    ...chatConfig,
-    // model: modelName, // Model is specified in getGenerativeModel
-  });
+  const modelName = "gemini-1.5-flash";
+  const chat = genAI.chats.create({ model: modelName, history: chatConfig.history || [], config: { systemInstruction: { parts: [{text: chatConfig.systemInstruction || 'Eres un asistente de IA útil y amigable.'}] } } });
   
   activeSessions.set(sessionId, chat);
 
@@ -62,17 +58,12 @@ export const initializeChatSession = (systemInstruction) => {
 export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
   try {
     let chat = activeSessions.get(senderId);
-    const modelName = "gemini-1.5-flash-preview-0514"; // Consistent model name
+    const modelName = "gemini-1.5-flash"; // Consistent model name
 
     if (!chat) {
       console.log(`Creando nueva sesión de chat para WhatsApp senderId: ${senderId}`);
       // System instruction can be customized or made dynamic if needed
-      const model = genAI.getGenerativeModel({ model: modelName });
-      chat = model.startChat({
-        history: [],
-        systemInstruction: DEFAULT_SYSTEM_INSTRUCTION,
-        // model: modelName // Model is specified in getGenerativeModel
-      });
+      chat = genAI.chats.create({ model: modelName, history: [], config: { systemInstruction: { parts: [{text: DEFAULT_SYSTEM_INSTRUCTION}] } } });
       activeSessions.set(senderId, chat);
 
       // Configurar un temporizador para limpiar la sesión después de un período de inactividad
@@ -87,13 +78,16 @@ export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
       console.log(`Usando sesión de chat existente para WhatsApp senderId: ${senderId}`);
     }
 
-    const result = await chat.sendMessage(userMessage);
-    if (result && result.response && typeof result.response.text === 'function') {
-      const responseText = result.response.text();
+    const result = await chat.sendMessage({ message: userMessage });
+    // The result itself is GenerateContentResponse, text is accessed via a getter
+    if (result && result.text !== undefined) {
+      const responseText = result.text;
       return responseText;
     } else {
-      console.error("Respuesta inesperada de la API de Gemini:", result);
-      throw new Error("Respuesta inesperada de la API de Gemini.");
+      console.error("Respuesta inesperada de la API de Gemini o sin texto:", result);
+      // It's possible a valid response might not have text if it's a function call or safety block
+      // For now, we'll treat it as an error if no text is found for WhatsApp.
+      throw new Error("Respuesta inesperada de la API de Gemini o sin contenido de texto.");
     }
   } catch (error) {
     console.error(`Error al obtener respuesta de Gemini para WhatsApp senderId ${senderId}:`, error);
@@ -117,10 +111,11 @@ export const streamMessageToGemini = async (sessionId, userMessage, sendEventCal
   }
 
   try {
-    const result = await chat.sendMessageStream(userMessage);
-
-    for await (const chunk of result.stream) {
-      const chunkText = chunk.text();
+    console.log("Chat object before sendMessageStream:", chat);
+    const result = await chat.sendMessageStream({ message: userMessage });
+    console.log("Result from sendMessageStream:", result);
+    for await (const chunk of result) {
+      const chunkText = chunk.text;
       // Enviar cada fragmento al cliente a través del callback
       sendEventCallback({ type: 'chunk', text: chunkText });
     }
