@@ -31,41 +31,54 @@ export const startChat = (req, res) => {
  * @param {object} res - Response object de Express.
  */
 export const sendMessage = async (req, res) => {
-  try {
-    const { sessionId } = req.params;
-    const { message } = req.body;
+  const { sessionId } = req.params;
+  const { message } = req.body;
 
-    if (!sessionId || !message) {
-      return res.status(400).json({ error: 'Faltan el sessionId o el mensaje.' });
+  if (!sessionId || !message) {
+    return res.status(400).json({ error: 'Faltan el sessionId o el mensaje.' });
+  }
+
+  // Función para enviar datos al cliente en formato SSE
+  // Definida aquí para ser accesible tanto en try como en catch (si headersSent)
+  const sendEvent = (data) => {
+    if (!res.writableEnded) { // Verificar si el stream sigue abierto
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
     }
-    
+  };
+
+  try {
     // --- Configuración para Server-Sent Events (SSE) ---
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders(); // Enviar los headers inmediatamente
 
-    // Función para enviar datos al cliente en formato SSE
-    const sendEvent = (data) => {
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
-    };
-
     // Llamar al servicio que maneja el streaming con Gemini
     await streamMessageToGemini(sessionId, message, sendEvent);
     
     // Enviar un evento final para indicar que el stream ha terminado
-    sendEvent({ type: 'done' });
-    res.end();
+    if (!res.writableEnded) {
+      sendEvent({ type: 'done' });
+      res.end();
+    }
 
   } catch (error) {
-    console.error(`Error en la sesión ${req.params.sessionId}:`, error.message);
-    // Es difícil enviar un estado de error una vez que el stream ha comenzado,
-    // pero si el error ocurre antes, podemos manejarlo.
+    console.error(`Error en la sesión ${sessionId}:`, error.message, error.stack);
+
     if (!res.headersSent) {
-      res.status(500).json({ error: error.message });
+      // Si los headers no se han enviado, podemos enviar una respuesta HTTP normal.
+      res.status(500).json({ error: 'Ocurrió un error al procesar tu solicitud.' });
+    } else if (!res.writableEnded) {
+      // Si los headers ya se enviaron, intentamos enviar un evento de error SSE.
+      try {
+        sendEvent({ type: 'error', message: 'Ocurrió un error procesando tu solicitud.', details: error.message });
+      } catch (sendEventError) {
+        console.error('Error al enviar el evento de error SSE:', sendEventError);
+      }
+      res.end(); // Importante cerrar la conexión.
     } else {
-      // Si el stream ya comenzó, simplemente terminamos la respuesta.
-      res.end();
+      // Si la respuesta ya terminó por alguna razón, solo logueamos.
+      console.error('Error ocurrido después de que la respuesta ya había finalizado.');
     }
   }
 };

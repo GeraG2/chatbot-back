@@ -44,12 +44,12 @@ export const handleIncomingMessage = async (req, res) => {
   // In a production environment, you MUST validate the webhook signature.
   // The verifyWebhookSignature function in whatsappService.js is a placeholder.
   // Ensure it's fully implemented using WHATSAPP_APP_SECRET.
-  // const isSignatureValid = verifyWebhookSignature(req);
-  // if (!isSignatureValid) {
-  //   console.warn('Invalid webhook signature. Rejecting request.');
-  //   return res.sendStatus(403); // Forbidden
-  // }
-  // console.log('Webhook signature validation passed (or placeholder returned true).');
+  const isSignatureValid = verifyWebhookSignature(req);
+  if (!isSignatureValid) {
+    console.warn('Invalid webhook signature. Rejecting request.');
+    return res.sendStatus(403); // Forbidden
+  }
+  // console.log('Webhook signature validation passed (or placeholder returned true).'); // This line is kept commented out.
 
   const body = req.body;
 

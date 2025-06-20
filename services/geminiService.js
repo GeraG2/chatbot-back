@@ -1,16 +1,16 @@
 // File: services/geminiService.js
 // Description: Encapsula la interacción con la API de Gemini y la gestión de sesiones.
 
-import { GoogleGenAI } from "@google/genai"; // Correct: GoogleGenerativeAI
+import { GoogleGenAI } from "@google/genai";
 import { v4 as uuidv4 } from 'uuid';
 
 // Cargar la API Key desde las variables de entorno
-const apiKey = process.env.GEMINI_API_KEY; // Correct: Define apiKey
+const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
   throw new Error("La variable de entorno GEMINI_API_KEY es requerida.");
 }
 
-const genAI = new GoogleGenAI(apiKey); // Corrected instantiation
+const genAI = new GoogleGenAI({ apiKey }); // Pass apiKey as an object property
 
 // Almacén en memoria para las sesiones de chat activas.
 // En un entorno de producción, esto debería ser reemplazado por una base de datos (Redis, MongoDB, etc.)

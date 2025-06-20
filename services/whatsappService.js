@@ -52,26 +52,61 @@ export const sendMessage = async (recipientId, messageText) => {
  * @returns {boolean} - True if the signature is considered valid for now.
  */
 export const verifyWebhookSignature = (req) => {
+  console.log("Verifying webhook signature..."); // General log for entry
   const signature = req.headers['x-hub-signature-256'];
-  if (signature) {
-    console.log('X-Hub-Signature-256 header present. TODO: Implement full signature validation using WHATSAPP_APP_SECRET.');
-    // In a real scenario, you would:
-    // 1. Get WHATSAPP_APP_SECRET from process.env.
-    // 2. Create a HMAC SHA256 hash of the raw request body using the App Secret.
-    // 3. Compare the generated hash with the 'signature' header.
-    // Example:
-    // const crypto = require('crypto');
-    // const body = req.rawBody; // Assuming rawBody is available (e.g., via bodyParser middleware)
-    // const secret = process.env.WHATSAPP_APP_SECRET;
-    // const hash = crypto.createHmac('sha256', secret).update(body).digest('hex');
-    // return crypto.timingSafeEqual(Buffer.from(signature.split('=')[1]), Buffer.from(hash));
+
+  if (!signature) {
+    console.warn("CRITICAL SECURITY WARNING: 'x-hub-signature-256' header NOT present. Request will be rejected. Implement full signature validation.");
+    // In a production environment, ensure this leads to request rejection in the controller.
+    return false;
   } else {
-    console.warn('X-Hub-Signature-256 header NOT present. Webhook requests should be validated for security.');
-    // Depending on your security policy, you might want to reject requests without a signature.
-    // For development, or if signature is optional for some reason, you might proceed.
+    console.warn("SECURITY WARNING: 'x-hub-signature-256' header present, but full validation is NOT IMPLEMENTED. This is a placeholder and NOT secure for production. Request will be allowed for now. IMPLEMENT FULL VALIDATION using WHATSAPP_APP_SECRET.");
+    // The following is an example of how to implement the actual signature verification.
+    // This MUST be implemented for production use.
+    //
+    // 1. Ensure you have a middleware that makes the raw request body available.
+    //    For Express, you might use something like:
+    //    app.use(express.json({
+    //      verify: (req, res, buf, encoding) => {
+    //        if (buf && buf.length) {
+    //          req.rawBody = buf.toString(encoding || 'utf8');
+    //        }
+    //      }
+    //    }));
+    //
+    // 2. Get WHATSAPP_APP_SECRET from your environment variables.
+    //    const appSecret = process.env.WHATSAPP_APP_SECRET;
+    //    if (!appSecret) {
+    //      console.error('CRITICAL: WHATSAPP_APP_SECRET is not set. Cannot validate signature.');
+    //      return false; // Or throw an error, but be careful not to crash the app.
+    //    }
+    //
+    // 3. Calculate the HMAC SHA256 hash.
+    //    const crypto = require('crypto');
+    //    // Ensure req.rawBody contains the raw, unparsed request body.
+    //    const expectedHash = crypto.createHmac('sha256', appSecret)
+    //                              .update(req.rawBody) // Use the raw request body
+    //                              .digest('hex');
+    //
+    // 4. Compare the calculated hash with the signature from the header.
+    //    // The signature header is typically in the format "sha256=actual_hash_value".
+    //    const receivedHash = signature.split('=')[1];
+    //    if (!receivedHash) {
+    //        console.warn("Signature format appears incorrect. Could not extract hash.");
+    //        return false;
+    //    }
+    //
+    //    const isValid = crypto.timingSafeEqual(Buffer.from(receivedHash, 'hex'), Buffer.from(expectedHash, 'hex'));
+    //    if (isValid) {
+    //        console.log("Webhook signature validated successfully (actual check).");
+    //        return true;
+    //    } else {
+    //        console.warn("CRITICAL: Webhook signature validation FAILED (actual check).");
+    //        return false;
+    //    }
+
+    // Returning true here to allow development flow when header is present but validation is not complete.
+    // THIS IS NOT SECURE FOR PRODUCTION.
+    return true;
   }
-  // TODO: Replace with actual signature validation logic for production.
-  // For now, returning true to allow processing during development.
-  // In production, if the signature is missing or invalid, you should return false or throw an error.
-  return true; // Placeholder - CHANGE FOR PRODUCTION
 };
