@@ -3,6 +3,7 @@
 
 import { GoogleGenAI } from "@google/genai"; // Correct: GoogleGenerativeAI
 import { v4 as uuidv4 } from 'uuid';
+import { getCurrentContext } from '../controllers/adminController.js'; // Importar para obtener el contexto dinámico
 
 // Cargar la API Key desde las variables de entorno
 const apiKey = process.env.GEMINI_API_KEY; // Correct: Define apiKey
@@ -17,23 +18,26 @@ const genAI = new GoogleGenAI(apiKey); // Corrected instantiation
 const activeSessions = new Map();
 
 // Define Default System Instruction for WhatsApp users
-const DEFAULT_SYSTEM_INSTRUCTION = "Eres un asistente de IA útil y amigable.";
+// const DEFAULT_SYSTEM_INSTRUCTION = "Eres un asistente de IA útil y amigable."; // Ya no es necesario aquí, se obtiene de adminController
 
 /**
  * Inicializa una nueva sesión de chat de Gemini.
- * @param {string} systemInstruction - El contexto de entrenamiento inicial.
+ * @param {string} [systemInstructionParam] - El contexto de entrenamiento inicial (opcional, prioriza el de adminController).
  * @returns {{sessionId: string, chat: object}} - El ID de la sesión y el objeto de chat.
  */
-export const initializeChatSession = (systemInstruction) => {
+export const initializeChatSession = (systemInstructionParam) => {
   const sessionId = uuidv4();
+  const dynamicSystemInstruction = getCurrentContext(); // Obtener contexto dinámico
   const chatConfig = {
     history: [], // El historial se gestionará aquí si es necesario
-    systemInstruction: systemInstruction || "Eres un asistente de IA útil y amigable."
+    systemInstruction: systemInstructionParam || dynamicSystemInstruction // Usar parámetro si se provee, sino el dinámico
   };
 
   // modelName could be a parameter or from config
   const modelName = "gemini-1.5-flash";
-  const chat = genAI.chats.create({ model: modelName, history: chatConfig.history || [], config: { systemInstruction: { parts: [{text: chatConfig.systemInstruction || 'Eres un asistente de IA útil y amigable.'}] } } });
+  // Asegurarse de que systemInstruction siempre tenga un valor
+  const instructionToUse = chatConfig.systemInstruction || "Eres un asistente de IA útil y amigable por defecto.";
+  const chat = genAI.chats.create({ model: modelName, history: chatConfig.history || [], config: { systemInstruction: { parts: [{text: instructionToUse}] } } });
   
   activeSessions.set(sessionId, chat);
 
@@ -59,11 +63,12 @@ export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
   try {
     let chat = activeSessions.get(senderId);
     const modelName = "gemini-1.5-flash"; // Consistent model name
+    const systemInstructionToUse = getCurrentContext() || "Eres un asistente de IA útil y amigable por defecto para WhatsApp."; // Obtener contexto dinámico
 
     if (!chat) {
-      console.log(`Creando nueva sesión de chat para WhatsApp senderId: ${senderId}`);
+      console.log(`Creando nueva sesión de chat para WhatsApp senderId: ${senderId} con instrucción: "${systemInstructionToUse}"`);
       // System instruction can be customized or made dynamic if needed
-      chat = genAI.chats.create({ model: modelName, history: [], config: { systemInstruction: { parts: [{text: DEFAULT_SYSTEM_INSTRUCTION}] } } });
+      chat = genAI.chats.create({ model: modelName, history: [], config: { systemInstruction: { parts: [{text: systemInstructionToUse}] } } });
       activeSessions.set(senderId, chat);
 
       // Configurar un temporizador para limpiar la sesión después de un período de inactividad
