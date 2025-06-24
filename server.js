@@ -5,7 +5,7 @@
 import express from 'express';
 import cors from 'cors';
 // La importación de dotenv ya no es necesaria aquí.
-import chatRoutes from './routes/chatRoutes.js';
+// import chatRoutes from './routes/chatRoutes.js'; // No longer needed
 import whatsappRoutes from './routes/whatsappRoutes.js';
 import adminRoutes from './routes/adminRoutes.js'; // Importar las nuevas rutas de admin
 
@@ -23,7 +23,7 @@ app.use(cors({
 app.use(express.json());
 
 // --- Rutas ---
-app.use('/api/chat', chatRoutes);
+// app.use('/api/chat', chatRoutes); // No longer needed
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/admin', adminRoutes); // Añadir middleware para las rutas de admin
 
