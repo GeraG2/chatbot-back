@@ -1,9 +1,26 @@
 // File: services/geminiService.js
 // Description: Encapsula la interacción con la API de Gemini y la gestión de sesiones.
 
+import { createClient } from 'redis';
 import { GoogleGenAI } from "@google/genai"; // Correct: GoogleGenerativeAI
 import { v4 as uuidv4 } from 'uuid';
 import { getCurrentContext } from '../controllers/adminController.js'; // Importar para obtener el contexto dinámico
+
+// Initialize Redis client
+const redisClient = createClient();
+
+redisClient.on('error', (err) => {
+  console.error('Redis Client Error', err);
+});
+
+(async () => {
+  try {
+    await redisClient.connect();
+    console.log('Connected to Redis server successfully.');
+  } catch (err) {
+    console.error('Could not connect to Redis server:', err);
+  }
+})();
 
 // Cargar la API Key desde las variables de entorno
 const apiKey = process.env.GEMINI_API_KEY; // Correct: Define apiKey
@@ -13,10 +30,6 @@ if (!apiKey) {
 
 const genAI = new GoogleGenAI(apiKey); // Corrected instantiation
 
-// Almacén en memoria para las sesiones de chat activas.
-// En un entorno de producción, esto debería ser reemplazado por una base de datos (Redis, MongoDB, etc.)
-const activeSessions = new Map();
-
 // Define Default System Instruction for WhatsApp users
 // const DEFAULT_SYSTEM_INSTRUCTION = "Eres un asistente de IA útil y amigable."; // Ya no es necesario aquí, se obtiene de adminController
 
@@ -25,7 +38,7 @@ const activeSessions = new Map();
  * @param {string} [systemInstructionParam] - El contexto de entrenamiento inicial (opcional, prioriza el de adminController).
  * @returns {{sessionId: string, chat: object}} - El ID de la sesión y el objeto de chat.
  */
-export const initializeChatSession = (systemInstructionParam) => {
+export const initializeChatSession = async (systemInstructionParam) => {
   const sessionId = uuidv4();
   const dynamicSystemInstruction = getCurrentContext(); // Obtener contexto dinámico
   const chatConfig = {
@@ -38,16 +51,22 @@ export const initializeChatSession = (systemInstructionParam) => {
   // Asegurarse de que systemInstruction siempre tenga un valor
   const instructionToUse = chatConfig.systemInstruction || "Eres un asistente de IA útil y amigable por defecto.";
   const chat = genAI.chats.create({ model: modelName, history: chatConfig.history || [], config: { systemInstruction: { parts: [{text: instructionToUse}] } } });
-  
-  activeSessions.set(sessionId, chat);
 
-  // Opcional: Limpiar sesiones antiguas para evitar fugas de memoria
-  setTimeout(() => {
-    if (activeSessions.has(sessionId)) {
-      activeSessions.delete(sessionId);
-      console.log(`Sesión ${sessionId} expirada y eliminada.`);
-    }
-  }, 3600 * 1000); // Expira en 1 hora
+  const sessionData = {
+    modelName,
+    history: chatConfig.history || [],
+    systemInstruction: instructionToUse,
+  };
+
+  try {
+    await redisClient.set(sessionId, JSON.stringify(sessionData), { EX: 3600 });
+    console.log(`Session ${sessionId} stored in Redis.`);
+  } catch (err) {
+    console.error(`Error storing session ${sessionId} in Redis:`, err);
+    // Fallback or error handling if Redis fails
+    // For now, we'll just log the error. Depending on requirements,
+    // we might want to throw the error or use an in-memory cache as a backup.
+  }
 
   return { sessionId, chat };
 };
@@ -60,27 +79,35 @@ export const initializeChatSession = (systemInstructionParam) => {
  * @returns {Promise<string>} - La respuesta de texto de Gemini.
  */
 export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
+  let chat = null;
+  const modelName = "gemini-1.5-flash"; // Consistent model name
+  const systemInstructionToUse = getCurrentContext() || "Eres un asistente de IA útil y amigable por defecto para WhatsApp."; // Obtener contexto dinámico
+
   try {
-    let chat = activeSessions.get(senderId);
-    const modelName = "gemini-1.5-flash"; // Consistent model name
-    const systemInstructionToUse = getCurrentContext() || "Eres un asistente de IA útil y amigable por defecto para WhatsApp."; // Obtener contexto dinámico
+    const serializedSession = await redisClient.get(senderId);
+
+    if (serializedSession) {
+      const sessionData = JSON.parse(serializedSession);
+      chat = genAI.chats.create({
+        model: sessionData.modelName,
+        history: sessionData.history,
+        config: { systemInstruction: { parts: [{text: sessionData.systemInstruction}] } }
+      });
+      await redisClient.expire(senderId, 3600); // Refresh TTL
+      console.log(`Usando sesión de chat existente para WhatsApp senderId: ${senderId} desde Redis`);
+    }
 
     if (!chat) {
       console.log(`Creando nueva sesión de chat para WhatsApp senderId: ${senderId} con instrucción: "${systemInstructionToUse}"`);
-      // System instruction can be customized or made dynamic if needed
       chat = genAI.chats.create({ model: modelName, history: [], config: { systemInstruction: { parts: [{text: systemInstructionToUse}] } } });
-      activeSessions.set(senderId, chat);
 
-      // Configurar un temporizador para limpiar la sesión después de un período de inactividad
-      // Similar al de initializeChatSession pero usando senderId
-      setTimeout(() => {
-        if (activeSessions.has(senderId)) {
-          activeSessions.delete(senderId);
-          console.log(`Sesión de WhatsApp para ${senderId} expirada y eliminada.`);
-        }
-      }, 3600 * 1000); // Expira en 1 hora (ajustar según sea necesario)
-    } else {
-      console.log(`Usando sesión de chat existente para WhatsApp senderId: ${senderId}`);
+      const sessionDataToStore = {
+        modelName,
+        history: [],
+        systemInstruction: systemInstructionToUse,
+      };
+      await redisClient.set(senderId, JSON.stringify(sessionDataToStore), { EX: 3600 });
+      console.log(`Nueva sesión de WhatsApp para ${senderId} almacenada en Redis.`);
     }
 
     const result = await chat.sendMessage({ message: userMessage });
@@ -109,13 +136,25 @@ export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
  * @param {function} sendEventCallback - Callback para enviar eventos SSE al cliente.
  */
 export const streamMessageToGemini = async (sessionId, userMessage, sendEventCallback) => {
-  const chat = activeSessions.get(sessionId);
-
-  if (!chat) {
-    throw new Error('Sesión de chat no válida o expirada.');
-  }
-
+  let chat = null;
   try {
+    const serializedSession = await redisClient.get(sessionId);
+
+    if (!serializedSession) {
+      sendEventCallback({ type: 'error', message: 'Sesión de chat no válida o expirada.' });
+      throw new Error('Sesión de chat no válida o expirada.');
+    }
+
+    const sessionData = JSON.parse(serializedSession);
+    chat = genAI.chats.create({
+      model: sessionData.modelName,
+      history: sessionData.history,
+      config: { systemInstruction: { parts: [{text: sessionData.systemInstruction}] } }
+    });
+    await redisClient.expire(sessionId, 3600); // Refresh TTL
+    console.log(`Chat session ${sessionId} retrieved from Redis and TTL refreshed.`);
+
+    // Proceed with sending message
     console.log("Chat object before sendMessageStream:", chat);
     const result = await chat.sendMessageStream({ message: userMessage });
     console.log("Result from sendMessageStream:", result);
