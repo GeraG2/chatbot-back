@@ -25,19 +25,76 @@ console.error('No se pudo conectar al servidor Redis:', err);
 // --- FIN DE INICIALIZACIÓN DE REDIS ---
 
 
-// --- SECCIÓN PARA EL PANEL DE ADMIN ---
-let currentSystemInstruction = "Eres un asistente de IA conversacional y amigable.";
+// --- SECCIÓN PARA EL PANEL DE ADMIN (OBSOLETA - AHORA POR SESIÓN) ---
+// let currentSystemInstruction = "Eres un asistente de IA conversacional y amigable.";
 
-export function getSystemInstruction() {
-return currentSystemInstruction;
-}
+// export function getSystemInstruction() {
+// return currentSystemInstruction;
+// }
 
-export function setSystemInstruction(newInstruction) {
-console.log(`Cambiando la instrucción del sistema a: "${newInstruction}"`);
-currentSystemInstruction = newInstruction;
-}
+// export function setSystemInstruction(newInstruction) {
+// console.log(`Cambiando la instrucción del sistema a: "${newInstruction}"`);
+// currentSystemInstruction = newInstruction;
+// }
 // --- FIN DE LA SECCIÓN ---
 
+/**
+ * Actualiza la instrucción del sistema para un usuario específico de WhatsApp en Redis.
+ * @param {string} senderId - El ID del remitente de WhatsApp.
+ * @param {string} newInstruction - La nueva instrucción del sistema.
+ */
+export const setSystemInstructionForWhatsapp = async (senderId, newInstruction) => {
+  const redisKey = `whatsapp_session:${senderId}`;
+  try {
+    const serializedSession = await redisClient.get(redisKey);
+    let sessionData = {};
+
+    if (serializedSession) {
+      sessionData = JSON.parse(serializedSession);
+    } else {
+      // Si no hay sesión, creamos una nueva estructura básica
+      sessionData.history = []; // Iniciar con historial vacío si no existe
+    }
+
+    sessionData.systemInstruction = newInstruction;
+
+    await redisClient.set(redisKey, JSON.stringify(sessionData), { EX: 3600 }); // Mantener la misma expiración
+    console.log(`Instrucción de sistema para WhatsApp senderId ${senderId} actualizada en Redis a: "${newInstruction}"`);
+    return true;
+  } catch (error) {
+    console.error(`Error al actualizar la instrucción de sistema para WhatsApp senderId ${senderId} en Redis:`, error);
+    return false;
+  }
+};
+
+/**
+ * Actualiza la instrucción del sistema para un usuario específico de Telegram en Redis.
+ * @param {string} chatId - El ID del chat de Telegram.
+ * @param {string} newInstruction - La nueva instrucción del sistema.
+ */
+export const setSystemInstructionForTelegram = async (chatId, newInstruction) => {
+  const redisKey = `telegram_session:${chatId}`; // Assuming a similar key structure for Telegram
+  try {
+    const serializedSession = await redisClient.get(redisKey);
+    let sessionData = {};
+
+    if (serializedSession) {
+      sessionData = JSON.parse(serializedSession);
+    } else {
+      // Si no hay sesión, creamos una nueva estructura básica
+      sessionData.history = []; // Iniciar con historial vacío si no existe
+    }
+
+    sessionData.systemInstruction = newInstruction;
+
+    await redisClient.set(redisKey, JSON.stringify(sessionData), { EX: 3600 }); // Mantener la misma expiración
+    console.log(`Instrucción de sistema para Telegram chatId ${chatId} actualizada en Redis a: "${newInstruction}"`);
+    return true;
+  } catch (error) {
+    console.error(`Error al actualizar la instrucción de sistema para Telegram chatId ${chatId} en Redis:`, error);
+    return false;
+  }
+};
 
 // Cargar la API Key y configurar Gemini
 const apiKey = process.env.GEMINI_API_KEY;
@@ -67,16 +124,23 @@ try {
         console.log("serializedSession ES null. Esto debería tratarse como una nueva conversación.");
     }
 
-    let conversationHistory = []; // This will be the history stored in Redis
+    let conversationHistory = [];
+    // Cada usuario empieza con la instrucción por defecto
+    let systemInstructionText = "Eres un asistente de IA conversacional y amigable.";
+
     if (serializedSession) {
         const sessionData = JSON.parse(serializedSession);
         conversationHistory = sessionData.history || [];
+        // Si el usuario tiene una instrucción guardada, úsala. Si no, usa la por defecto.
+        systemInstructionText = sessionData.systemInstruction || systemInstructionText;
         console.log(`Historial de conversación para ${senderId} cargado desde Redis:`, JSON.stringify(conversationHistory, null, 2));
+        console.log(`Instrucción de sistema para ${senderId} cargada desde Redis: "${systemInstructionText}"`);
+    } else {
+        console.log(`No hay sesión previa en Redis para ${senderId}. Usando instrucción por defecto: "${systemInstructionText}"`);
     }
 
     // Construct 'contents' for the API call
     let apiContents = [];
-    const systemInstructionText = getSystemInstruction();
 
     if (conversationHistory.length === 0 && systemInstructionText) {
         console.log("Inyectando systemInstruction para nueva conversación en apiContents.");
@@ -90,54 +154,35 @@ try {
     // Add current user message
     apiContents.push({ role: "user", parts: [{ text: userMessage }] });
 
-    // console.log("SystemInstruction (manejado arriba si es nueva conversación):", systemInstructionText); // Removed
     console.log("Contents a ENVIAR a generateContent:", JSON.stringify(apiContents, null, 2));
 
     const result = await genAI.models.generateContent({
         model: "gemini-1.5-flash", // Or "gemini-pro"
-        // generationConfig: { candidateCount: 1 }, // Optional
-        // systemInstruction: { parts: [{ text: systemInstructionText }] }, // For models that support it this way
         contents: apiContents
     });
     console.log("Objeto 'result' COMPLETO de generateContent:", JSON.stringify(result, null, 2));
 
-    // If using a model that requires system_instruction at the top level,
-    // the call might look like:
-    // const result = await genAI.models.generateContent({
-    //    model: "gemini-model-name",
-    //    systemInstruction: { parts: [{ text: systemInstructionText }] },
-    //    contents: apiContents // contents would not include the system instruction part then
-    // });
-
-    // const response = result.response; // Remove this line
-    // const responseText = response.text(); // Remove this line
-
-    // New validation and extraction logic:
     if (!result || !result.candidates || result.candidates.length === 0 ||
         !result.candidates[0].content || !result.candidates[0].content.parts ||
         result.candidates[0].content.parts.length === 0 ||
         typeof result.candidates[0].content.parts[0].text !== 'string') {
-        // Keep the console.log for the full 'result' object for debugging if this condition is met
         console.error("Respuesta inesperada de la API de Gemini (estructura de result):", JSON.stringify(result, null, 2));
         throw new Error("Respuesta inesperada de la API de Gemini o sin contenido de texto.");
     }
     const responseText = result.candidates[0].content.parts[0].text;
 
-    // Update history for Redis
-    // Correctly build newHistoryForRedis (SHOULD NOT include the artificial system instruction turns)
-    let newHistoryForRedis = [...conversationHistory]; // Start with history loaded from Redis
+    // Update history and system instruction for Redis
+    let newHistoryForRedis = [...conversationHistory];
     newHistoryForRedis.push({ role: "user", parts: [{ text: userMessage }] });
     newHistoryForRedis.push({ role: "model", parts: [{ text: responseText }] });
 
-    // Optional: Trim history
-    // const maxHistoryTurns = 10;
-    // if (newHistoryForRedis.length > maxHistoryTurns * 2) {
-    //   newHistoryForRedis = newHistoryForRedis.slice(newHistoryForRedis.length - maxHistoryTurns * 2);
-    // }
-
     console.log("Historial ACTUALIZADO para guardar en Redis:", JSON.stringify(newHistoryForRedis, null, 2));
-    await redisClient.set(redisKey, JSON.stringify({ history: newHistoryForRedis }), { EX: 3600 });
-    console.log(`Historial de sesión para ${senderId} actualizado en Redis.`);
+    console.log(`Instrucción de sistema para ${senderId} A GUARDAR en Redis: "${systemInstructionText}"`);
+    await redisClient.set(redisKey, JSON.stringify({
+        history: newHistoryForRedis,
+        systemInstruction: systemInstructionText // <-- Guardar la instrucción usada
+    }), { EX: 3600 });
+    console.log(`Sesión (historial e instrucción) para ${senderId} actualizada en Redis.`);
 
     return responseText;
 
