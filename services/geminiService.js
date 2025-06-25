@@ -176,6 +176,17 @@ try {
     newHistoryForRedis.push({ role: "user", parts: [{ text: userMessage }] });
     newHistoryForRedis.push({ role: "model", parts: [{ text: responseText }] });
 
+    // --- INICIO DE LA LÓGICA DE RECORTE DEL HISTORIAL ---
+    const maxHistoryTurns = 10; // Un "turno" es un par: (1 mensaje de usuario + 1 respuesta del bot)
+
+    // La longitud del array de historial será el número de turnos por 2
+    if (newHistoryForRedis.length > maxHistoryTurns * 2) {
+      console.log(`El historial tiene ${newHistoryForRedis.length} mensajes. Recortando a los últimos ${maxHistoryTurns * 2}...`);
+      // Aquí está la magia:
+      newHistoryForRedis = newHistoryForRedis.slice(newHistoryForRedis.length - maxHistoryTurns * 2);
+    }
+    // --- FIN DE LA LÓGICA DE RECORTE DEL HISTORIAL ---
+
     console.log("Historial ACTUALIZADO para guardar en Redis:", JSON.stringify(newHistoryForRedis, null, 2));
     console.log(`Instrucción de sistema para ${senderId} A GUARDAR en Redis: "${systemInstructionText}"`);
     await redisClient.set(redisKey, JSON.stringify({
