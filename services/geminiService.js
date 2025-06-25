@@ -39,12 +39,13 @@ console.error('No se pudo conectar al servidor Redis:', err);
 // --- FIN DE LA SECCIÓN ---
 
 /**
- * Actualiza la instrucción del sistema para un usuario específico de WhatsApp en Redis.
- * @param {string} senderId - El ID del remitente de WhatsApp.
+ * Función genérica para actualizar la instrucción del sistema para un usuario en Redis.
+ * @param {string} userId - El ID del usuario (ej. senderId de WhatsApp, chatId de Telegram).
+ * @param {string} platformPrefix - El prefijo de la clave de Redis para la plataforma (ej. 'whatsapp_session', 'telegram_session').
  * @param {string} newInstruction - La nueva instrucción del sistema.
  */
-export const setSystemInstructionForWhatsapp = async (senderId, newInstruction) => {
-  const redisKey = `whatsapp_session:${senderId}`;
+const setSystemInstructionForUser = async (userId, platformPrefix, newInstruction) => {
+  const redisKey = `${platformPrefix}:${userId}`;
   try {
     const serializedSession = await redisClient.get(redisKey);
     let sessionData = {};
@@ -59,12 +60,21 @@ export const setSystemInstructionForWhatsapp = async (senderId, newInstruction) 
     sessionData.systemInstruction = newInstruction;
 
     await redisClient.set(redisKey, JSON.stringify(sessionData), { EX: 3600 }); // Mantener la misma expiración
-    console.log(`Instrucción de sistema para WhatsApp senderId ${senderId} actualizada en Redis a: "${newInstruction}"`);
+    console.log(`Instrucción de sistema para ${platformPrefix} userId ${userId} actualizada en Redis a: "${newInstruction}"`);
     return true;
   } catch (error) {
-    console.error(`Error al actualizar la instrucción de sistema para WhatsApp senderId ${senderId} en Redis:`, error);
+    console.error(`Error al actualizar la instrucción de sistema para ${platformPrefix} userId ${userId} en Redis:`, error);
     return false;
   }
+};
+
+/**
+ * Actualiza la instrucción del sistema para un usuario específico de WhatsApp en Redis.
+ * @param {string} senderId - El ID del remitente de WhatsApp.
+ * @param {string} newInstruction - La nueva instrucción del sistema.
+ */
+export const setSystemInstructionForWhatsapp = async (senderId, newInstruction) => {
+  return setSystemInstructionForUser(senderId, 'whatsapp_session', newInstruction);
 };
 
 /**
@@ -73,27 +83,7 @@ export const setSystemInstructionForWhatsapp = async (senderId, newInstruction) 
  * @param {string} newInstruction - La nueva instrucción del sistema.
  */
 export const setSystemInstructionForTelegram = async (chatId, newInstruction) => {
-  const redisKey = `telegram_session:${chatId}`; // Assuming a similar key structure for Telegram
-  try {
-    const serializedSession = await redisClient.get(redisKey);
-    let sessionData = {};
-
-    if (serializedSession) {
-      sessionData = JSON.parse(serializedSession);
-    } else {
-      // Si no hay sesión, creamos una nueva estructura básica
-      sessionData.history = []; // Iniciar con historial vacío si no existe
-    }
-
-    sessionData.systemInstruction = newInstruction;
-
-    await redisClient.set(redisKey, JSON.stringify(sessionData), { EX: 3600 }); // Mantener la misma expiración
-    console.log(`Instrucción de sistema para Telegram chatId ${chatId} actualizada en Redis a: "${newInstruction}"`);
-    return true;
-  } catch (error) {
-    console.error(`Error al actualizar la instrucción de sistema para Telegram chatId ${chatId} en Redis:`, error);
-    return false;
-  }
+  return setSystemInstructionForUser(chatId, 'telegram_session', newInstruction);
 };
 
 // Cargar la API Key y configurar Gemini
