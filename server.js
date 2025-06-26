@@ -36,7 +36,7 @@ const PRODUCTS_PATH = './products.json';
 // --- Middleware ---
 // Habilitar CORS para permitir peticiones desde tu frontend de React
 app.use(cors({
-  origin: 'http://localhost:5174', // ACTUALIZADO: Cambiado a 5174 según requisitos
+  origin: 'http://localhost:5173', // ACTUALIZADO: Cambiado a 5173 según requisitos
   methods: ['GET', 'POST', 'PUT'], // Añadido PUT por si acaso, aunque no se pide explícitamente
 }));
 
@@ -214,10 +214,11 @@ app.post('/api/products', async (req, res) => {
   try {
     const newProduct = req.body;
 
-    // Validación básica del producto recibido
-    if (!newProduct || typeof newProduct !== 'object' || !newProduct.nombre || !newProduct.precio) {
+    // --- LA CORRECCIÓN ESTÁ AQUÍ ---
+    // Validación básica del producto recibido, ahora esperando claves en inglés
+    if (!newProduct || typeof newProduct !== 'object' || !newProduct.name || newProduct.price === undefined) {
         console.warn('Petición POST a /api/products rechazada por cuerpo inválido:', newProduct);
-        return res.status(400).json({ message: 'Cuerpo de la solicitud de producto inválido. Se requiere al menos nombre y precio.' });
+        return res.status(400).json({ message: 'Cuerpo de la solicitud de producto inválido. Se requiere al menos "name" y "price".' });
     }
 
     let products = [];
