@@ -4,8 +4,9 @@
 
 import express from 'express';
 import cors from 'cors';
+import fs from 'fs'; // Importar fs
 // La importación de dotenv ya no es necesaria aquí.
-import chatRoutes from './routes/chatRoutes.js';
+// import chatRoutes from './routes/chatRoutes.js'; // No longer needed
 import whatsappRoutes from './routes/whatsappRoutes.js';
 import adminRoutes from './routes/adminRoutes.js'; // Importar las nuevas rutas de admin
 
@@ -23,9 +24,73 @@ app.use(cors({
 app.use(express.json());
 
 // --- Rutas ---
-app.use('/api/chat', chatRoutes);
+// app.use('/api/chat', chatRoutes); // No longer needed
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/admin', adminRoutes); // Añadir middleware para las rutas de admin
+
+// --- Rutas para la configuración ---
+const CONFIG_FILE_PATH = './config.json';
+
+// GET /api/config - Devuelve la configuración actual
+app.get('/api/config', (req, res) => {
+  fs.readFile(CONFIG_FILE_PATH, 'utf8', (err, data) => {
+    if (err) {
+      console.error('Error al leer config.json:', err);
+      return res.status(500).json({ error: 'No se pudo leer la configuración.' });
+    }
+    try {
+      const config = JSON.parse(data);
+      res.json(config);
+    } catch (parseErr) {
+      console.error('Error al parsear config.json:', parseErr);
+      return res.status(500).json({ error: 'El formato de la configuración es inválido.' });
+    }
+  });
+});
+
+// POST /api/config - Actualiza la configuración
+app.post('/api/config', async (req, res) => {
+  try {
+    // Log #1: Para saber que la petición llegó correctamente.
+    console.log('-------------------------------------------');
+    console.log(`[${new Date().toISOString()}] Petición POST recibida en /api/config`);
+
+    const newConfig = req.body;
+
+    // Log #2: Para ver exactamente qué datos recibiste del frontend. ¡Muy útil para depurar!
+    console.log('Datos recibidos para guardar:', newConfig);
+
+    // Validación básica (mantenida de la versión anterior, puedes ajustarla si es necesario)
+    if (!newConfig || typeof newConfig !== 'object') {
+      // Log de error específico para validación
+      console.warn('⚠️ Petición POST a /api/config rechazada por cuerpo inválido:', newConfig);
+      console.log('-------------------------------------------');
+      return res.status(400).json({ message: 'Cuerpo de la solicitud inválido.' });
+    }
+    // Puedes añadir más validaciones específicas aquí si es necesario, por ejemplo:
+    // if (typeof newConfig.DEFAULT_SYSTEM_INSTRUCTION !== 'string' ||
+    //     typeof newConfig.GEMINI_MODEL !== 'string' ||
+    //     typeof newConfig.MAX_HISTORY_TURNS !== 'number') {
+    //   console.warn('⚠️ Petición POST a /api/config rechazada por campos faltantes o tipos incorrectos:', newConfig);
+    //   console.log('-------------------------------------------');
+    //   return res.status(400).json({ message: 'Faltan campos de configuración o tienen tipos incorrectos.' });
+    // }
+
+    await fs.promises.writeFile(CONFIG_FILE_PATH, JSON.stringify(newConfig, null, 2));
+
+    // Log #3: La confirmación final de que todo salió bien.
+    console.log('✅ ¡Archivo config.json actualizado con éxito!');
+    console.log('-------------------------------------------');
+
+    res.json({ message: '¡Configuración guardada con éxito!' });
+
+  } catch (error) {
+    // También es buena idea mejorar el log de errores.
+    console.error('❌ Error al intentar guardar en config.json:', error);
+    console.log('-------------------------------------------'); // Para separar logs en caso de errores consecutivos
+    res.status(500).json({ message: 'Error al guardar la configuración.' });
+  }
+});
 
 // --- Manejador de errores global (básico) ---
 app.use((err, req, res, next) => {
