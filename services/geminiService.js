@@ -3,17 +3,18 @@
 
 import dotenv from 'dotenv';
 dotenv.config();
-import fs from 'fs';
+import fs from 'fs'; // fs normal para lectura síncrona de config.json y products.json
 import { GoogleGenAI } from "@google/genai";
-import { createClient } from 'redis';
+// import { createClient } from 'redis'; // Ya no se importa createClient aquí
+import redisClient from '../config/redisClient.js'; // Importar cliente Redis centralizado
 
 // --- LEER CONFIGURACIÓN EXTERNA ---
 let CONFIG = {};
 try {
-  const configFile = fs.readFileSync('./config.json', 'utf-8');
+  const configFile = fs.readFileSync('../config.json', 'utf-8'); // Ruta corregida
   CONFIG = JSON.parse(configFile);
 } catch (error) {
-  console.error("Error al leer o parsear config.json:", error);
+  console.error("Error al leer o parsear ../config.json:", error);
   // Valores por defecto si el archivo de configuración falla
   CONFIG = {
     DEFAULT_SYSTEM_INSTRUCTION: "Eres un asistente de IA conversacional y amigable.",
@@ -30,18 +31,19 @@ console.log(CONFIG);
 console.log('----------------------------------------------------');
 
 // --- INICIALIZACIÓN DE REDIS ---
-const redisClient = createClient();
-redisClient.on('error', (err) => {
-  console.error('Redis Client Error', err);
-});
-(async () => {
-  try {
-    await redisClient.connect();
-    console.log('Conectado al servidor Redis con éxito.');
-  } catch (err) {
-    console.error('No se pudo conectar al servidor Redis:', err);
-  }
-})();
+// La inicialización de Redis ahora se maneja en config/redisClient.js
+// const redisClient = createClient(); // Eliminado
+// redisClient.on('error', (err) => { // Eliminado
+//   console.error('Redis Client Error', err); // Eliminado
+// }); // Eliminado
+// (async () => { // Eliminado
+//   try { // Eliminado
+//     await redisClient.connect(); // Eliminado
+//     console.log('Conectado al servidor Redis con éxito.'); // Eliminado
+//   } catch (err) { // Eliminado
+//     console.error('No se pudo conectar al servidor Redis:', err); // Eliminado
+//   } // Eliminado
+// })(); // Eliminado
 
 // --- INICIALIZACIÓN DE GEMINI ---
 const apiKey = process.env.GEMINI_API_KEY;
@@ -166,7 +168,7 @@ export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
       if (name === "getProductInfo") {
         const productName = args.productName;
         // Lógica para buscar en products.json
-        const productsData = JSON.parse(fs.readFileSync('./products.json', 'utf-8'));
+        const productsData = JSON.parse(fs.readFileSync('../products.json', 'utf-8')); // Ruta corregida
         const product = productsData.find(p => p.nombre.toLowerCase().includes(productName.toLowerCase()));
 
         // La forma correcta de estructurar la respuesta de la herramienta
