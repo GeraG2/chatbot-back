@@ -169,31 +169,11 @@ export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
         const productsData = JSON.parse(fs.readFileSync('./products.json', 'utf-8'));
         const product = productsData.find(p => p.nombre.toLowerCase().includes(productName.toLowerCase()));
 
-        let functionResponseParts = [];
-        if (product) {
-          functionResponseParts = [
-            {
-              executableFile: {
-                name: "getProductInfo",
-                data: JSON.stringify({
-                  nombre: product.nombre,
-                  descripcion: product.descripcion,
-                  precio: product.precio,
-                  stock: product.stock
-                })
-              }
-            }
-          ];
-        } else {
-          functionResponseParts = [
-            {
-              executableFile: {
-                name: "getProductInfo",
-                data: JSON.stringify({ error: "Producto no encontrado" })
-              }
-            }
-          ];
-        }
+        // La forma correcta de estructurar la respuesta de la herramienta
+        let functionResponse = {
+          name: "getProductInfo",
+          response: product ? product : { error: "Producto no encontrado." }
+        };
 
         // Segunda llamada a Gemini con el resultado de la función
         const secondCallResult = await genAI.models.generateContent({
@@ -205,8 +185,8 @@ export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
               parts: [{ functionCall: call }]
             },
             { // Respuesta de la función (tool)
-              role: "function",
-              parts: functionResponseParts
+              role: "tool",
+              parts: [{ functionResponse: functionResponse }]
             }
           ],
           tools: tools
@@ -223,6 +203,19 @@ export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
     // El historial que guardamos NO incluye la instrucción inyectada, solo la conversación real.
     let newHistoryForRedis = [...conversationHistory];
     newHistoryForRedis.push({ role: "user", parts: [{ text: userMessage }] });
+
+    if (call) {
+      // Si hubo una llamada a función, guardamos la llamada y su respuesta.
+      newHistoryForRedis.push({
+        role: "model",
+        parts: [{ functionCall: call }]
+      });
+      newHistoryForRedis.push({
+        role: "tool",
+        parts: [{ functionResponse: functionResponse }] // Asegúrate que functionResponse esté en este scope
+      });
+    }
+    // Siempre guardamos la respuesta final de texto del modelo.
     newHistoryForRedis.push({ role: "model", parts: [{ text: responseText }] });
 
     // Recortamos el historial si excede el límite definido en la configuración.
