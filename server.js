@@ -4,8 +4,9 @@
 
 import express from 'express';
 import cors from 'cors';
-import fs from 'fs'; // Importar fs
-import { createClient } from 'redis'; // Importar createClient
+import fs from 'fs/promises'; // Importar fs.promises para usar async/await directamente
+// import { createClient } from 'redis'; // Ya no se importa createClient aquí
+import redisClient from './config/redisClient.js'; // Importar cliente Redis centralizado
 import { setSystemInstructionForWhatsapp } from './services/geminiService.js'; // Importar función necesaria
 // La importación de dotenv ya no es necesaria aquí.
 // import chatRoutes from './routes/chatRoutes.js'; // No longer needed
@@ -15,19 +16,22 @@ import adminRoutes from './routes/adminRoutes.js'; // Importar las nuevas rutas 
 const app = express();
 const PORT = process.env.PORT || 5001;
 
+const PRODUCTS_PATH = './products.json';
+
 // --- INICIALIZACIÓN DE REDIS ---
-const redisClient = createClient();
-redisClient.on('error', (err) => {
-  console.error('Redis Client Error en server.js', err);
-});
-(async () => {
-  try {
-    await redisClient.connect();
-    console.log('Conectado al servidor Redis desde server.js con éxito.');
-  } catch (err) {
-    console.error('No se pudo conectar al servidor Redis desde server.js:', err);
-  }
-})();
+// La inicialización de Redis ahora se maneja en config/redisClient.js
+// const redisClient = createClient(); // Eliminado
+// redisClient.on('error', (err) => { // Eliminado
+// console.error('Redis Client Error en server.js', err); // Eliminado
+// }); // Eliminado
+// (async () => { // Eliminado
+// try { // Eliminado
+// await redisClient.connect(); // Eliminado
+// console.log('Conectado al servidor Redis desde server.js con éxito.'); // Eliminado
+// } catch (err) { // Eliminado
+// console.error('No se pudo conectar al servidor Redis desde server.js:', err); // Eliminado
+// } // Eliminado
+// })(); // Eliminado
 
 // --- Middleware ---
 // Habilitar CORS para permitir peticiones desde tu frontend de React
@@ -130,20 +134,17 @@ app.post('/api/sessions/:senderId/instruction', async (req, res) => {
 const CONFIG_FILE_PATH = './config.json';
 
 // GET /api/config - Devuelve la configuración actual
-app.get('/api/config', (req, res) => {
-  fs.readFile(CONFIG_FILE_PATH, 'utf8', (err, data) => {
-    if (err) {
-      console.error('Error al leer config.json:', err);
-      return res.status(500).json({ error: 'No se pudo leer la configuración.' });
+app.get('/api/config', async (req, res) => { // Cambiado a async para consistencia, aunque fs.readFile síncrono abajo
+  try {
+    const data = await fs.readFile(CONFIG_FILE_PATH, 'utf-8'); // fs.promises.readFile
+    res.json(JSON.parse(data));
+  } catch (error) {
+    console.error('Error al leer config.json:', error);
+    if (error.code === 'ENOENT') {
+      return res.status(404).json({ message: 'Archivo de configuración no encontrado.' });
     }
-    try {
-      const config = JSON.parse(data);
-      res.json(config);
-    } catch (parseErr) {
-      console.error('Error al parsear config.json:', parseErr);
-      return res.status(500).json({ error: 'El formato de la configuración es inválido.' });
-    }
-  });
+    res.status(500).json({ message: 'Error al obtener la configuración.' });
+  }
 });
 
 // POST /api/config - Actualiza la configuración
@@ -188,6 +189,129 @@ app.post('/api/config', async (req, res) => {
     console.log('-------------------------------------------'); // Para separar logs en caso de errores consecutivos
     res.status(500).json({ message: 'Error al guardar la configuración.' });
   }
+});
+
+// --- NUEVAS RUTAS para Catálogo de Productos (Módulo 5) ---
+
+// GET /api/products - Para OBTENER todos los productos
+app.get('/api/products', async (req, res) => {
+  console.log('Petición GET recibida en /api/products');
+  try {
+    const data = await fs.readFile(PRODUCTS_PATH, 'utf-8');
+    res.json(JSON.parse(data));
+  } catch (error) {
+    console.error('Error al leer products.json:', error);
+    if (error.code === 'ENOENT') { // Manejo específico si el archivo no existe
+      return res.status(404).json({ message: 'Archivo de productos no encontrado.' });
+    }
+    res.status(500).json({ message: 'Error al obtener los productos.' });
+  }
+});
+
+// POST /api/products - Para AÑADIR un nuevo producto
+app.post('/api/products', async (req, res) => {
+  console.log('Petición POST recibida en /api/products', req.body);
+  try {
+    const newProduct = req.body;
+
+    // Validación básica del producto recibido
+    if (!newProduct || typeof newProduct !== 'object' || !newProduct.nombre || !newProduct.precio) {
+        console.warn('Petición POST a /api/products rechazada por cuerpo inválido:', newProduct);
+        return res.status(400).json({ message: 'Cuerpo de la solicitud de producto inválido. Se requiere al menos nombre y precio.' });
+    }
+
+    let products = [];
+    try {
+        const data = await fs.readFile(PRODUCTS_PATH, 'utf-8');
+        products = JSON.parse(data);
+    } catch (error) {
+        // Si el archivo no existe o hay un error al leerlo/parsearlo, empezamos con un array vacío.
+        // Esto hace que la API sea más robusta si products.json se borra o corrompe.
+        console.warn('products.json no encontrado o corrupto, se creará uno nuevo:', error.message);
+        products = [];
+    }
+
+    newProduct.id = `prod_${Date.now()}`;
+    products.push(newProduct);
+
+    await fs.writeFile(PRODUCTS_PATH, JSON.stringify(products, null, 2));
+    console.log('Producto añadido con éxito:', newProduct);
+    res.status(201).json({ message: 'Producto añadido con éxito.', product: newProduct });
+  } catch (error) {
+    console.error('Error al añadir producto:', error);
+    res.status(500).json({ message: 'Error al añadir el producto.' });
+  }
+});
+
+// PUT /api/products/:id - Para EDITAR un producto existente
+app.put('/api/products/:id', async (req, res) => {
+    console.log(`Petición PUT recibida en /api/products/${req.params.id}`, req.body);
+    try {
+        const productId = req.params.id;
+        const updatedProductData = req.body;
+
+        if (!updatedProductData || typeof updatedProductData !== 'object') {
+            console.warn(`Petición PUT a /api/products/${productId} rechazada por cuerpo inválido:`, updatedProductData);
+            return res.status(400).json({ message: 'Cuerpo de la solicitud de producto inválido.' });
+        }
+
+        let products = [];
+        try {
+            const data = await fs.readFile(PRODUCTS_PATH, 'utf-8');
+            products = JSON.parse(data);
+        } catch (error) {
+            console.error('Error al leer products.json antes de actualizar, producto no encontrado:', error);
+            return res.status(404).json({ message: 'Archivo de productos no encontrado, no se puede actualizar.' });
+        }
+
+        const productIndex = products.findIndex(p => p.id === productId);
+
+        if (productIndex === -1) {
+            console.warn(`Producto con ID ${productId} no encontrado para actualizar.`);
+            return res.status(404).json({ message: 'Producto no encontrado.' });
+        }
+
+        // Actualizar solo los campos proporcionados, manteniendo los existentes si no se proporcionan nuevos valores
+        products[productIndex] = { ...products[productIndex], ...updatedProductData };
+
+        await fs.writeFile(PRODUCTS_PATH, JSON.stringify(products, null, 2));
+        console.log('Producto actualizado con éxito:', products[productIndex]);
+        res.json({ message: 'Producto actualizado con éxito.', product: products[productIndex] });
+
+    } catch (error) {
+        console.error('Error al actualizar producto:', error);
+        res.status(500).json({ message: 'Error al actualizar el producto.' });
+    }
+});
+
+// DELETE /api/products/:id - Para ELIMINAR un producto
+app.delete('/api/products/:id', async (req, res) => {
+    console.log(`Petición DELETE recibida en /api/products/${req.params.id}`);
+    try {
+        const productId = req.params.id;
+        let products = [];
+        try {
+            const data = await fs.readFile(PRODUCTS_PATH, 'utf-8');
+            products = JSON.parse(data);
+        } catch (error) {
+            console.error('Error al leer products.json antes de eliminar, producto no encontrado:', error);
+            return res.status(404).json({ message: 'Archivo de productos no encontrado, no se puede eliminar.' });
+        }
+
+        const filteredProducts = products.filter(p => p.id !== productId);
+
+        if (products.length === filteredProducts.length) {
+            console.warn(`Producto con ID ${productId} no encontrado para eliminar.`);
+            return res.status(404).json({ message: 'Producto no encontrado.' });
+        }
+
+        await fs.writeFile(PRODUCTS_PATH, JSON.stringify(filteredProducts, null, 2));
+        console.log(`Producto con ID ${productId} eliminado con éxito.`);
+        res.json({ message: 'Producto eliminado con éxito.' });
+    } catch (error) {
+        console.error('Error al eliminar producto:', error);
+        res.status(500).json({ message: 'Error al eliminar el producto.' });
+    }
 });
 
 // --- Manejador de errores global (básico) ---

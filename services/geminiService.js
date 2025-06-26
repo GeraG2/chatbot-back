@@ -3,17 +3,18 @@
 
 import dotenv from 'dotenv';
 dotenv.config();
-import fs from 'fs';
+import fs from 'fs'; // fs normal para lectura síncrona de config.json y products.json
 import { GoogleGenAI } from "@google/genai";
-import { createClient } from 'redis';
+// import { createClient } from 'redis'; // Ya no se importa createClient aquí
+import redisClient from '../config/redisClient.js'; // Importar cliente Redis centralizado
 
 // --- LEER CONFIGURACIÓN EXTERNA ---
 let CONFIG = {};
 try {
-  const configFile = fs.readFileSync('./config.json', 'utf-8');
+  const configFile = fs.readFileSync('../config.json', 'utf-8'); // Ruta corregida
   CONFIG = JSON.parse(configFile);
 } catch (error) {
-  console.error("Error al leer o parsear config.json:", error);
+  console.error("Error al leer o parsear ../config.json:", error);
   // Valores por defecto si el archivo de configuración falla
   CONFIG = {
     DEFAULT_SYSTEM_INSTRUCTION: "Eres un asistente de IA conversacional y amigable.",
@@ -30,18 +31,19 @@ console.log(CONFIG);
 console.log('----------------------------------------------------');
 
 // --- INICIALIZACIÓN DE REDIS ---
-const redisClient = createClient();
-redisClient.on('error', (err) => {
-  console.error('Redis Client Error', err);
-});
-(async () => {
-  try {
-    await redisClient.connect();
-    console.log('Conectado al servidor Redis con éxito.');
-  } catch (err) {
-    console.error('No se pudo conectar al servidor Redis:', err);
-  }
-})();
+// La inicialización de Redis ahora se maneja en config/redisClient.js
+// const redisClient = createClient(); // Eliminado
+// redisClient.on('error', (err) => { // Eliminado
+//   console.error('Redis Client Error', err); // Eliminado
+// }); // Eliminado
+// (async () => { // Eliminado
+//   try { // Eliminado
+//     await redisClient.connect(); // Eliminado
+//     console.log('Conectado al servidor Redis con éxito.'); // Eliminado
+//   } catch (err) { // Eliminado
+//     console.error('No se pudo conectar al servidor Redis:', err); // Eliminado
+//   } // Eliminado
+// })(); // Eliminado
 
 // --- INICIALIZACIÓN DE GEMINI ---
 const apiKey = process.env.GEMINI_API_KEY;
@@ -49,6 +51,26 @@ if (!apiKey) {
   throw new Error("La variable de entorno GEMINI_API_KEY es requerida.");
 }
 const genAI = new GoogleGenAI({ apiKey });
+
+// --- DEFINICIÓN DE HERRAMIENTAS ---
+const tools = [{
+  functionDeclarations: [
+    {
+      name: "getProductInfo",
+      description: "Obtiene información detallada de un producto, como su precio, descripción y stock.",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          productName: {
+            type: "STRING",
+            description: "El nombre del producto sobre el que el cliente está preguntando. Por ejemplo: 'tacos de asada', 'refresco'."
+          }
+        },
+        required: ["productName"]
+      }
+    }
+  ]
+}];
 
 
 // --- FUNCIONES DE GESTIÓN DE SESIÓN (PARA PANEL DE ADMIN) ---
@@ -133,10 +155,47 @@ export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
     // Se usa el método que sabemos que funciona en tu librería.
     const result = await genAI.models.generateContent({
         model: CONFIG.GEMINI_MODEL,
-        contents: apiContents
+        contents: apiContents,
+        tools: tools // <-- La nueva propiedad
     });
 
-    const responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const call = result?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+    let responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (call) {
+      console.log("Llamada a función detectada:", call);
+      const { name, args } = call;
+      if (name === "getProductInfo") {
+        const productName = args.productName;
+        // Lógica para buscar en products.json
+        const productsData = JSON.parse(fs.readFileSync('../products.json', 'utf-8')); // Ruta corregida
+        const product = productsData.find(p => p.nombre.toLowerCase().includes(productName.toLowerCase()));
+
+        // La forma correcta de estructurar la respuesta de la herramienta
+        let functionResponse = {
+          name: "getProductInfo",
+          response: product ? product : { error: "Producto no encontrado." }
+        };
+
+        // Segunda llamada a Gemini con el resultado de la función
+        const secondCallResult = await genAI.models.generateContent({
+          model: CONFIG.GEMINI_MODEL,
+          contents: [
+            ...apiContents, // Historial original y mensaje del usuario
+            { // Respuesta del modelo (simulando la llamada a función)
+              role: "model",
+              parts: [{ functionCall: call }]
+            },
+            { // Respuesta de la función (tool)
+              role: "tool",
+              parts: [{ functionResponse: functionResponse }]
+            }
+          ],
+          tools: tools
+        });
+        responseText = secondCallResult?.candidates?.[0]?.content?.parts?.[0]?.text;
+      }
+    }
 
     if (!responseText) {
       console.error("Respuesta inesperada de la API de Gemini:", JSON.stringify(result, null, 2));
@@ -146,6 +205,19 @@ export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
     // El historial que guardamos NO incluye la instrucción inyectada, solo la conversación real.
     let newHistoryForRedis = [...conversationHistory];
     newHistoryForRedis.push({ role: "user", parts: [{ text: userMessage }] });
+
+    if (call) {
+      // Si hubo una llamada a función, guardamos la llamada y su respuesta.
+      newHistoryForRedis.push({
+        role: "model",
+        parts: [{ functionCall: call }]
+      });
+      newHistoryForRedis.push({
+        role: "tool",
+        parts: [{ functionResponse: functionResponse }] // Asegúrate que functionResponse esté en este scope
+      });
+    }
+    // Siempre guardamos la respuesta final de texto del modelo.
     newHistoryForRedis.push({ role: "model", parts: [{ text: responseText }] });
 
     // Recortamos el historial si excede el límite definido en la configuración.
