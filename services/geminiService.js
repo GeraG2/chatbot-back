@@ -50,6 +50,26 @@ if (!apiKey) {
 }
 const genAI = new GoogleGenAI({ apiKey });
 
+// --- DEFINICIÓN DE HERRAMIENTAS ---
+const tools = [{
+  functionDeclarations: [
+    {
+      name: "getProductInfo",
+      description: "Obtiene información detallada de un producto, como su precio, descripción y stock.",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          productName: {
+            type: "STRING",
+            description: "El nombre del producto sobre el que el cliente está preguntando. Por ejemplo: 'tacos de asada', 'refresco'."
+          }
+        },
+        required: ["productName"]
+      }
+    }
+  ]
+}];
+
 
 // --- FUNCIONES DE GESTIÓN DE SESIÓN (PARA PANEL DE ADMIN) ---
 
@@ -133,10 +153,67 @@ export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
     // Se usa el método que sabemos que funciona en tu librería.
     const result = await genAI.models.generateContent({
         model: CONFIG.GEMINI_MODEL,
-        contents: apiContents
+        contents: apiContents,
+        tools: tools // <-- La nueva propiedad
     });
 
-    const responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const call = result?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+    let responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (call) {
+      console.log("Llamada a función detectada:", call);
+      const { name, args } = call;
+      if (name === "getProductInfo") {
+        const productName = args.productName;
+        // Lógica para buscar en products.json
+        const productsData = JSON.parse(fs.readFileSync('./products.json', 'utf-8'));
+        const product = productsData.find(p => p.nombre.toLowerCase().includes(productName.toLowerCase()));
+
+        let functionResponseParts = [];
+        if (product) {
+          functionResponseParts = [
+            {
+              executableFile: {
+                name: "getProductInfo",
+                data: JSON.stringify({
+                  nombre: product.nombre,
+                  descripcion: product.descripcion,
+                  precio: product.precio,
+                  stock: product.stock
+                })
+              }
+            }
+          ];
+        } else {
+          functionResponseParts = [
+            {
+              executableFile: {
+                name: "getProductInfo",
+                data: JSON.stringify({ error: "Producto no encontrado" })
+              }
+            }
+          ];
+        }
+
+        // Segunda llamada a Gemini con el resultado de la función
+        const secondCallResult = await genAI.models.generateContent({
+          model: CONFIG.GEMINI_MODEL,
+          contents: [
+            ...apiContents, // Historial original y mensaje del usuario
+            { // Respuesta del modelo (simulando la llamada a función)
+              role: "model",
+              parts: [{ functionCall: call }]
+            },
+            { // Respuesta de la función (tool)
+              role: "function",
+              parts: functionResponseParts
+            }
+          ],
+          tools: tools
+        });
+        responseText = secondCallResult?.candidates?.[0]?.content?.parts?.[0]?.text;
+      }
+    }
 
     if (!responseText) {
       console.error("Respuesta inesperada de la API de Gemini:", JSON.stringify(result, null, 2));
