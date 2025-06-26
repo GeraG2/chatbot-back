@@ -1,23 +1,23 @@
 [
   {
     "id": "taco-pastor",
-    "nombre": "Orden de Tacos al Pastor",
-    "descripcion": "Tres deliciosos tacos de carne al pastor marinada con nuestra receta secreta.",
-    "precio": 100,
+    "name": "Orden de Tacos al Pastor",
+    "description": "Tres deliciosos tacos de carne al pastor marinada con nuestra receta secreta.",
+    "price": 100,
     "stock": 50
   },
   {
     "id": "taco-asada",
-    "nombre": "Orden de Tacos de Asada",
-    "descripcion": "Tres tacos de jugosa carne asada a la parrilla.",
-    "precio": 100,
+    "name": "Orden de Tacos de Asada",
+    "description": "Tres tacos de jugosa carne asada a la parrilla.",
+    "price": 100,
     "stock": 45
   },
   {
     "id": "refresco",
-    "nombre": "Refresco",
-    "descripcion": "Una bebida bien fría para acompañar tus tacos.",
-    "precio": 30,
+    "name": "Refresco",
+    "description": "Una bebida bien fría para acompañar tus tacos.",
+    "price": 30,
     "stock": 100
   }
 ]
