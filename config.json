@@ -1,0 +1,5 @@
+{
+  "DEFAULT_SYSTEM_INSTRUCTION": "Eres un asistente de IA para ventas de [Tu Empresa].",
+  "GEMINI_MODEL": "gemini-1.5-flash",
+  "MAX_HISTORY_TURNS": 10
+}

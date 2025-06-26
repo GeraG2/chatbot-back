@@ -3,8 +3,25 @@
 
 import dotenv from 'dotenv';
 dotenv.config();
+import fs from 'fs'; // Importar fs
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from 'redis';
+
+// --- LEER CONFIGURACIÓN ---
+let CONFIG = {};
+try {
+  const configFile = fs.readFileSync('./config.json', 'utf-8');
+  CONFIG = JSON.parse(configFile);
+} catch (error) {
+  console.error("Error al leer o parsear config.json:", error);
+  // Usar valores por defecto o terminar la aplicación si la configuración es crítica
+  CONFIG = {
+    DEFAULT_SYSTEM_INSTRUCTION: "Eres un asistente de IA conversacional y amigable.",
+    GEMINI_MODEL: "gemini-1.5-flash",
+    MAX_HISTORY_TURNS: 10
+  };
+  console.warn("Se usarán valores de configuración por defecto debido a un error.");
+}
 
 // --- INICIALIZACIÓN DE REDIS ---
 const redisClient = createClient();
@@ -92,7 +109,6 @@ if (!apiKey) {
   throw new Error("La variable de entorno GEMINI_API_KEY es requerida.");
 }
 
-console.log("GEMINI_API_KEY en service ANTES DE USAR:", process.env.GEMINI_API_KEY); // Using process.env.GEMINI_API_KEY for direct log
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }); // Use process.env.GEMINI_API_KEY directly
 
 // const model = genAI.getGenerativeModel(...); // Removed from module scope
@@ -115,18 +131,18 @@ try {
     }
 
     let conversationHistory = [];
-    // Cada usuario empieza con la instrucción por defecto
-    let systemInstructionText = "Eres un asistente de IA conversacional y amigable.";
+    // Usar la instrucción por defecto desde CONFIG
+    let systemInstructionText = CONFIG.DEFAULT_SYSTEM_INSTRUCTION;
 
     if (serializedSession) {
         const sessionData = JSON.parse(serializedSession);
         conversationHistory = sessionData.history || [];
-        // Si el usuario tiene una instrucción guardada, úsala. Si no, usa la por defecto.
-        systemInstructionText = sessionData.systemInstruction || systemInstructionText;
+        // Si el usuario tiene una instrucción guardada en Redis, úsala. Si no, usa la de CONFIG.
+        systemInstructionText = sessionData.systemInstruction || CONFIG.DEFAULT_SYSTEM_INSTRUCTION;
         console.log(`Historial de conversación para ${senderId} cargado desde Redis:`, JSON.stringify(conversationHistory, null, 2));
-        console.log(`Instrucción de sistema para ${senderId} cargada desde Redis: "${systemInstructionText}"`);
+        console.log(`Instrucción de sistema para ${senderId} cargada desde Redis (o CONFIG si no existe en sesión): "${systemInstructionText}"`);
     } else {
-        console.log(`No hay sesión previa en Redis para ${senderId}. Usando instrucción por defecto: "${systemInstructionText}"`);
+        console.log(`No hay sesión previa en Redis para ${senderId}. Usando instrucción por defecto de CONFIG: "${systemInstructionText}"`);
     }
 
     // Construct 'contents' for the API call
@@ -147,7 +163,7 @@ try {
     console.log("Contents a ENVIAR a generateContent:", JSON.stringify(apiContents, null, 2));
 
     const result = await genAI.models.generateContent({
-        model: "gemini-1.5-flash", // Or "gemini-pro"
+        model: CONFIG.GEMINI_MODEL, // Usar el modelo desde CONFIG
         contents: apiContents
     });
     console.log("Objeto 'result' COMPLETO de generateContent:", JSON.stringify(result, null, 2));
@@ -167,7 +183,7 @@ try {
     newHistoryForRedis.push({ role: "model", parts: [{ text: responseText }] });
 
     // --- INICIO DE LA LÓGICA DE RECORTE DEL HISTORIAL ---
-    const maxHistoryTurns = 10; // Un "turno" es un par: (1 mensaje de usuario + 1 respuesta del bot)
+    const maxHistoryTurns = CONFIG.MAX_HISTORY_TURNS; // Usar MAX_HISTORY_TURNS desde CONFIG
 
     // La longitud del array de historial será el número de turnos por 2
     if (newHistoryForRedis.length > maxHistoryTurns * 2) {
