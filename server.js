@@ -3,7 +3,7 @@
 
 import express from 'express';
 import cors from 'cors';
-import fs from 'fs/promises';
+import fs from 'fs/promises'; 
 
 // --- Importaciones de Módulos Locales ---
 // Asume que el cliente de Redis está centralizado. Si no, descomenta la inicialización de abajo.
@@ -55,6 +55,7 @@ app.use(express.json());
 // --- Rutas Principales ---
 app.use('/api/whatsapp', whatsappRoutes);
 // app.use('/api/admin', adminRoutes); // Listo para cuando muevas la lógica
+
 
 
 // ===================================================================
