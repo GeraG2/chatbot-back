@@ -7,7 +7,7 @@ import fs from 'fs/promises';
 
 // --- Importaciones de Módulos Locales ---
 // Asume que el cliente de Redis está centralizado. Si no, descomenta la inicialización de abajo.
-// import redisClient from './config/redisClient.js'; 
+import redisClient from './config/redisClient.js';
 import { setSystemInstructionForWhatsapp, getTestResponse } from './services/geminiService.js'; // <-- Importar getTestResponse
 import whatsappRoutes from './routes/whatsappRoutes.js';
 // import adminRoutes from './routes/adminRoutes.js'; // Aún no se usa, pero está listo para la refactorización
@@ -18,21 +18,6 @@ const PORT = process.env.PORT || 5001;
 // --- Constantes de Rutas de Archivos ---
 const PRODUCTS_PATH = './products.json';
 const CONFIG_FILE_PATH = './config.json';
-
-// --- INICIALIZACIÓN DE REDIS (si no está centralizado) ---
-// Si no creaste un archivo redisClient.js, descomenta este bloque.
-import { createClient } from 'redis';
-const redisClient = createClient();
-redisClient.on('error', (err) => console.error('Redis Client Error en server.js', err));
-(async () => {
-  try {
-    await redisClient.connect();
-    console.log('Conectado al servidor Redis desde server.js con éxito.');
-  } catch (err) {
-    console.error('No se pudo conectar al servidor Redis desde server.js:', err);
-  }
-})();
-
 
 // --- Middleware ---
 // Configuración de CORS flexible para permitir múltiples puertos de desarrollo

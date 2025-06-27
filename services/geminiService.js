@@ -8,7 +8,7 @@ import fs from 'fs/promises'; // Usar la versión de promesas para consistencia
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from "@google/genai";
-import { createClient } from 'redis';
+import redisClient from '../config/redisClient.js';
 
 // --- LEER CONFIGURACIÓN EXTERNA (DE FORMA ROBUSTA) ---
 const __filename = fileURLToPath(import.meta.url);
@@ -17,35 +17,29 @@ const configPath = path.join(__dirname, '..', 'config.json');
 const productsPath = path.join(__dirname, '..', 'products.json'); 
 
 let CONFIG = {};
-try {
-  const configFile = fs.readFileSync(configPath, 'utf-8');
-  CONFIG = JSON.parse(configFile);
-} catch (error) {
-  console.error(`Error al leer o parsear config.json: ${error.message}`);
-  CONFIG = {
-    DEFAULT_SYSTEM_INSTRUCTION: "Eres un asistente de IA conversacional y amigable.",
-    GEMINI_MODEL: "models/gemini-1.5-pro-latest",
-    MAX_HISTORY_TURNS: 10
-  };
-  console.warn("Se usarán valores de configuración por defecto.");
-}
-console.log('✅ Configuración cargada al iniciar el servicio.');
+
+(async () => {
+  try {
+    const configFile = await fs.readFile(configPath, 'utf-8'); // <-- Asíncrono
+    CONFIG = JSON.parse(configFile);
+    console.log('✅ Configuración cargada con éxito (asíncrono).');
+  } catch (error) {
+    console.error(`Error al leer o parsear config.json de forma asíncrona: ${error.message}`);
+    CONFIG = {
+      DEFAULT_SYSTEM_INSTRUCTION: "Eres un asistente de IA conversacional y amigable.",
+      GEMINI_MODEL: "models/gemini-1.5-pro-latest",
+      MAX_HISTORY_TURNS: 10
+    };
+    console.warn("Se usarán valores de configuración por defecto debido a un error en la carga asíncrona.");
+  }
+})();
 
 // --- INICIALIZACIÓN DE DEPENDENCIAS ---
 // Nota: Centralizar el cliente Redis en /config/redisClient.js es la mejor práctica final.
 // Por ahora, lo mantenemos aquí para que el archivo sea autocontenido.
-const redisClient = createClient();
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) { throw new Error("GEMINI_API_KEY es requerida."); }
 const genAI = new GoogleGenAI({ apiKey });
-(async () => {
-  try {
-    await redisClient.connect();
-    console.log('Conectado al servidor Redis con éxito.');
-  } catch (err) {
-    console.error('No se pudo conectar al servidor Redis:', err);
-  }
-})();
 
 // --- DEFINICIÓN DE HERRAMIENTAS ---
 const tools = [{
