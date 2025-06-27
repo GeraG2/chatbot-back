@@ -10,6 +10,7 @@ import fs from 'fs/promises';
 import redisClient from './config/redisClient.js';
 import { setSystemInstructionForWhatsapp, getTestResponse } from './services/geminiService.js'; // <-- Importar getTestResponse
 import whatsappRoutes from './routes/whatsappRoutes.js';
+import messengerRoutes from './routes/messengerRoutes.js'; // <-- AÑADIR ESTA LÍNEA
 // import adminRoutes from './routes/adminRoutes.js'; // Aún no se usa, pero está listo para la refactorización
 
 const app = express();
@@ -39,6 +40,7 @@ app.use(express.json());
 
 // --- Rutas Principales ---
 app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/messenger', messengerRoutes); // <-- AÑADIR ESTA LÍNEA
 // app.use('/api/admin', adminRoutes); // Listo para cuando muevas la lógica
 
 
