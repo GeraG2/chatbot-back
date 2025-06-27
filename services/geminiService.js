@@ -67,16 +67,16 @@ const tools = [{
   functionDeclarations: [
     {
       name: "getProductInfo",
-      description: "Obtiene información detallada de un producto del catálogo, como su precio, descripción y stock.",
+      description: "Busca en el catálogo de productos para ver el menú completo, obtener detalles de un item específico, o dar recomendaciones. Se debe usar siempre que el cliente pregunte 'qué tienes', 'cuál es el menú', 'qué recomiendas', o cualquier pregunta sobre los productos.",
       parameters: {
         type: "OBJECT",
         properties: {
           productName: {
             type: "STRING",
-            description: "El nombre del producto que el cliente pregunta. Ejemplos: 'tacos de asada', 'refresco', 'pastor'."
+            description: "El nombre del producto específico que el cliente menciona. Si el cliente pide el menú completo o una recomendación general, este campo se puede omitir."
           }
         },
-        required: ["productName"]
+        // Al quitar la línea 'required', hacemos que 'productName' sea opcional.
       }
     }
   ]
@@ -110,8 +110,11 @@ export const setSystemInstructionForWhatsapp = async (senderId, newInstruction) 
 
 
 // --- FUNCIÓN PRINCIPAL DEL CHATBOT ---
+// Reemplaza tu función existente con esta versión de diagnóstico
+
 export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
   try {
+    // 1. Preparamos todo como antes
     const redisKey = `whatsapp_session:${senderId}`;
     const serializedSession = await redisClient.get(redisKey);
 
@@ -136,75 +139,36 @@ export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
     apiContents.push(...conversationHistory);
     apiContents.push({ role: "user", parts: [{ text: userMessage }] });
 
+    console.log("--- Intentando llamada a la API de Gemini... ---");
+
+    // 2. Hacemos la llamada a la API
     const result = await genAI.models.generateContent({
         model: CONFIG.GEMINI_MODEL,
         contents: apiContents,
         tools: tools
     });
 
-    const response = result.response;
-    const call = response?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
-    let responseText = response?.candidates?.[0]?.content?.parts?.[0]?.text;
+    // --- ESTE ES EL LOG MÁS IMPORTANTE ---
+    // Imprimimos el resultado COMPLETO, sin ninguna condición,
+    // justo después de recibirlo de la API.
+    console.log("--- RESPUESTA BRUTA RECIBIDA DE LA API: ---");
+    console.log(JSON.stringify(result, null, 2));
+    // --- FIN DEL LOG IMPORTANTE ---
+
+    // 3. Ahora intentamos procesar el resultado
+    const responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
     
-    let functionCallPart = null;
-    let toolResponsePart = null;
-    
-    if (call) {
-      console.log("Llamada a función detectada:", call);
-      const { name, args } = call;
-      let functionResponsePayload;
-
-      if (name === "getProductInfo") {
-        const productName = args.productName || "";
-        const productsData = JSON.parse(fs.readFileSync('./products.json', 'utf-8'));
-        const product = productsData.find(p => p.name.toLowerCase().includes(productName.toLowerCase()));
-        
-        functionResponsePayload = {
-            name: "getProductInfo",
-            response: product || { error: `El producto '${productName}' no fue encontrado.` }
-        };
-      }
-
-      if (functionResponsePayload) {
-        functionCallPart = { role: "model", parts: [{ functionCall: call }] };
-        toolResponsePart = { 
-            role: "tool", 
-            parts: [{ functionResponse: functionResponsePayload }] 
-        };
-
-        const secondResult = await genAI.models.generateContent({
-            model: CONFIG.GEMINI_MODEL,
-            contents: [
-              ...apiContents,
-              functionCallPart,
-              toolResponsePart
-            ],
-            tools: tools
-        });
-        responseText = secondResult?.response?.candidates?.[0]?.content?.parts?.[0]?.text;
-      }
-    }
-
     if (!responseText) {
+      // Si llegamos aquí, es porque el log de arriba nos mostrará por qué responseText está vacío.
       throw new Error("La respuesta final de la API no contenía texto.");
     }
     
+    // Si todo va bien, continuamos con la lógica normal...
     let newHistoryForRedis = [...conversationHistory];
     newHistoryForRedis.push({ role: 'user', parts: [{ text: userMessage }] });
-
-    if (functionCallPart && toolResponsePart) {
-      newHistoryForRedis.push(functionCallPart);
-      newHistoryForRedis.push(toolResponsePart);
-    }
-    
+    // ... (Aquí iría el resto de tu lógica para guardar el historial completo si hubo function call)
     newHistoryForRedis.push({ role: 'model', parts: [{ text: responseText }] });
-    
-    const maxHistoryTurns = CONFIG.MAX_HISTORY_TURNS;
-    if (newHistoryForRedis.length > maxHistoryTurns * 4) { 
-      newHistoryForRedis = newHistoryForRedis.slice(newHistoryForRedis.length - maxHistoryTurns * 4);
-    }
-    
-    await redisClient.set(redisKey, JSON.stringify({
+      await redisClient.set(redisKey, JSON.stringify({
       history: newHistoryForRedis,
       systemInstruction: systemInstructionText
     }), { EX: 3600 });
@@ -212,7 +176,8 @@ export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
     return responseText;
 
   } catch (error) {
-    console.error(`Error al obtener respuesta de Gemini para WhatsApp senderId ${senderId}:`, error);
+    // Este catch ahora atrapará el error después de que hayamos impreso la respuesta.
+    console.error(`Error en getGeminiResponseForWhatsapp para ${senderId}:`, error);
     return "Lo siento, no pude procesar tu solicitud en este momento.";
   }
 };

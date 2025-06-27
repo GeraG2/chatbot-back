@@ -19,19 +19,5 @@
     "description": "Una bebida bien fría para acompañar tus tacos.",
     "price": 30,
     "stock": 100
-  },
-  {
-    "id": "prod_1750973009846",
-    "name": "enchiladas",
-    "description": "5 enchiladas",
-    "price": 45,
-    "stock": 11
-  },
-  {
-    "id": "prod_1750973070583",
-    "name": "pizza",
-    "description": "grande",
-    "price": 150,
-    "stock": 3
   }
 ]
