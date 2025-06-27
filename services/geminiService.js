@@ -171,6 +171,12 @@ export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
   return _getGenericGeminiResponse(senderId, userMessage, 'whatsapp_session');
 };
 
+// --- AÑADE O VERIFICA ESTA FUNCIÓN ---
+export const getGeminiResponseForMessenger = async (senderId, userMessage) => {
+  return _getGenericGeminiResponse(senderId, userMessage, 'messenger_session');
+};
+// ------------------------------------
+
 // --- FUNCIÓN PARA PRUEBAS DE PROMPT ---
 export const getTestResponse = async (systemInstruction, history, userMessage) => {
   // (La implementación de esta función que ya tienes es correcta)
