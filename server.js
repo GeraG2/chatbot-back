@@ -8,7 +8,7 @@ import fs from 'fs/promises';
 // --- Importaciones de Módulos Locales ---
 // Asume que el cliente de Redis está centralizado. Si no, descomenta la inicialización de abajo.
 // import redisClient from './config/redisClient.js'; 
-import { setSystemInstructionForWhatsapp } from './services/geminiService.js';
+import { setSystemInstructionForWhatsapp, getTestResponse } from './services/geminiService.js'; // <-- Importar getTestResponse
 import whatsappRoutes from './routes/whatsappRoutes.js';
 // import adminRoutes from './routes/adminRoutes.js'; // Aún no se usa, pero está listo para la refactorización
 
@@ -60,6 +60,30 @@ app.use('/api/whatsapp', whatsappRoutes);
 // ===================================================================
 // --- ENDPOINTS DE API PARA EL PANEL DE ADMINISTRACIÓN ---
 // ===================================================================
+
+// --- Rutas para Módulo "Entrenador de IA" (Prueba de Prompts) ---
+app.post('/api/test-prompt', async (req, res) => {
+  try {
+    const { systemInstruction, history } = req.body;
+
+    // Validación de entradas
+    if (!systemInstruction || typeof systemInstruction !== 'string') {
+      return res.status(400).json({ message: 'La propiedad "systemInstruction" (string) es requerida.' });
+    }
+    if (!history || !Array.isArray(history)) {
+      // Permitimos que el historial esté vacío, pero debe ser un array
+      return res.status(400).json({ message: 'La propiedad "history" (array) es requerida, puede ser un array vacío.' });
+    }
+
+    const responseText = await getTestResponse(systemInstruction, history);
+    res.status(200).json({ responseText });
+
+  } catch (error) {
+    console.error('Error en el endpoint /api/test-prompt:', error);
+    res.status(500).json({ message: 'Error interno del servidor al procesar la prueba de prompt.', error: error.message });
+  }
+});
+
 
 // --- Rutas para Módulo 2: Monitor de Chats en Vivo ---
 

@@ -17,13 +17,13 @@ const __dirname = path.dirname(__filename);
 
 // 2. Construimos una ruta absoluta y segura al archivo config.json
 // Asume que geminiService.js está en /services y config.json en la raíz del proyecto.
-const configPath = path.join(__dirname, '..', 'config.json'); 
+const configPath = path.join(__dirname, '..', 'config.json');
 
 let CONFIG = {};
 try {
   // 3. Leemos el archivo desde esa ruta absoluta
-  const configFile = fs.readFileSync(configPath, 'utf-8');
-  CONFIG = JSON.parse(configFile);
+  const configFileData = fs.readFileSync(configPath, 'utf-8'); // Cambiado a configFileData
+  CONFIG = JSON.parse(configFileData); // Cambiado a configFileData
 } catch (error) {
   console.error(`Error al leer o parsear config.json en la ruta: ${configPath}`, error);
   // Valores por defecto si el archivo de configuración falla
@@ -109,12 +109,13 @@ export const setSystemInstructionForWhatsapp = async (senderId, newInstruction) 
 };
 
 
-// --- FUNCIÓN PRINCIPAL DEL CHATBOT ---
-// Reemplaza tu función existente con esta versión de diagnóstico
-
+// --- FUNCIÓN PRINCIPAL DEL CHATBOT (VERSIÓN DE PRODUCCIÓN) ---
+/**
+* Obtiene una respuesta de Gemini para los usuarios finales.
+* Implementación de producción limpia, sin logs de diagnóstico.
+*/
 export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
   try {
-    // 1. Preparamos todo como antes
     const redisKey = `whatsapp_session:${senderId}`;
     const serializedSession = await redisClient.get(redisKey);
 
@@ -139,45 +140,189 @@ export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
     apiContents.push(...conversationHistory);
     apiContents.push({ role: "user", parts: [{ text: userMessage }] });
 
-    console.log("--- Intentando llamada a la API de Gemini... ---");
-
-    // 2. Hacemos la llamada a la API
     const result = await genAI.models.generateContent({
         model: CONFIG.GEMINI_MODEL,
         contents: apiContents,
         tools: tools
     });
 
-    // --- ESTE ES EL LOG MÁS IMPORTANTE ---
-    // Imprimimos el resultado COMPLETO, sin ninguna condición,
-    // justo después de recibirlo de la API.
-    console.log("--- RESPUESTA BRUTA RECIBIDA DE LA API: ---");
-    console.log(JSON.stringify(result, null, 2));
-    // --- FIN DEL LOG IMPORTANTE ---
+    const response = result.response;
+    const call = response?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+    let responseText = response?.candidates?.[0]?.content?.parts?.[0]?.text;
 
-    // 3. Ahora intentamos procesar el resultado
-    const responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+    let functionCallPart = null;
+    let toolResponsePart = null;
     
+    if (call) {
+      console.log("Llamada a función detectada por un usuario real:", call);
+      const { name, args } = call;
+      let functionResponsePayload;
+
+      if (name === "getProductInfo") {
+        // Asegurarse de que __dirname y path están disponibles si no lo están globalmente en este scope
+        // const __filename = fileURLToPath(import.meta.url); // Ya definido globalmente
+        // const __dirname = path.dirname(__filename); // Ya definido globalmente
+        const productsFilePath = path.join(__dirname, '..', 'products.json');
+        try {
+            const productsDataString = fs.readFileSync(productsFilePath, 'utf-8'); // Cambiado a fs.readFileSync
+            const productsData = JSON.parse(productsDataString);
+            let foundProducts;
+            if (args.productName) {
+                foundProducts = productsData.filter(p => p.name.toLowerCase().includes(args.productName.toLowerCase()));
+            } else {
+                foundProducts = productsData; // Devuelve todos si no hay nombre específico
+            }
+            functionResponsePayload = {
+                name: "getProductInfo", // Mantener el nombre original de la función
+                response: foundProducts.length > 0 ? foundProducts : { error: `No se encontraron productos con el nombre '${args.productName || ''}'.` }
+            };
+        } catch (fileError) {
+            console.error(`Error al leer o parsear products.json: ${fileError}`);
+            functionResponsePayload = {
+                name: "getProductInfo",
+                response: { error: `Error interno al acceder a la información de productos.` }
+            };
+        }
+      } else {
+        // Manejar otras posibles funciones si se añaden en el futuro
+         console.warn(`Función desconocida llamada: ${name}`);
+         functionResponsePayload = {
+            name: name, // Usar el nombre de la función desconocida
+            response: { error: `La función ${name} no está implementada.` }
+         };
+      }
+
+      if (functionResponsePayload) {
+        functionCallPart = { role: "model", parts: [{ functionCall: call }] };
+        toolResponsePart = { role: "tool", parts: [{ functionResponse: functionResponsePayload }] };
+
+        // Log para depuración de la segunda llamada
+        console.log("--- Realizando segunda llamada a Gemini con respuesta de herramienta ---");
+        console.log("Contenido para la segunda llamada:", JSON.stringify([ ...apiContents, functionCallPart, toolResponsePart ], null, 2));
+
+
+        const secondResult = await genAI.models.generateContent({
+            model: CONFIG.GEMINI_MODEL,
+            contents: [ ...apiContents, functionCallPart, toolResponsePart ],
+            // No es necesario pasar 'tools' de nuevo en la segunda llamada si solo esperamos texto.
+            // Sin embargo, si la respuesta de la herramienta pudiera desencadenar OTRA herramienta, se necesitarían.
+            // Por simplicidad y basado en el ejemplo, lo omitimos, pero es un punto a considerar.
+        });
+        responseText = secondResult?.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+        console.log("Texto de respuesta tras la segunda llamada:", responseText);
+      }
+    }
+
     if (!responseText) {
-      // Si llegamos aquí, es porque el log de arriba nos mostrará por qué responseText está vacío.
-      throw new Error("La respuesta final de la API no contenía texto.");
+      // Este error puede ocurrir si la segunda llamada (después de la función) tampoco devuelve texto.
+      console.error("La respuesta final de la API (después de posible function call) no contenía texto.");
+      // Considerar un mensaje más amigable para el usuario si esto sucede.
+      return "Lo siento, tuve un problema al procesar la información de la herramienta.";
     }
     
-    // Si todo va bien, continuamos con la lógica normal...
     let newHistoryForRedis = [...conversationHistory];
     newHistoryForRedis.push({ role: 'user', parts: [{ text: userMessage }] });
-    // ... (Aquí iría el resto de tu lógica para guardar el historial completo si hubo function call)
+
+    if (functionCallPart && toolResponsePart) {
+      newHistoryForRedis.push(functionCallPart);
+      newHistoryForRedis.push(toolResponsePart);
+    }
+
     newHistoryForRedis.push({ role: 'model', parts: [{ text: responseText }] });
-      await redisClient.set(redisKey, JSON.stringify({
+
+    // Limitar el historial para no exceder los límites de tokens y mantener Redis ligero
+    const maxHistoryTurns = CONFIG.MAX_HISTORY_TURNS || 10; // Usar valor de config o default
+    // Cada turno tiene user, model, y potencialmente functionCall y functionResponse.
+    // Una aproximación es 2 entradas por turno simple, 4 por turno con function call.
+    // Para estar seguros y simplificar, cortamos basado en un número de entradas totales.
+    // Si MAX_HISTORY_TURNS es 10, y cada turno son 2 mensajes (user, model), son 20 mensajes.
+    // Si un turno complejo tiene 4 mensajes, 10 turnos son 40 mensajes.
+    // El slice debe ser más generoso. Si MAX_HISTORY_TURNS es 10, guardemos ~40-50 últimas entradas.
+    // El código original usaba `maxHistoryTurns * 4` (ej. 10*4 = 40). Esto parece razonable.
+    // La inyección de prompt inicial (2 mensajes) no se guarda en `newHistoryForRedis` aquí, se añade al vuelo.
+
+    if (newHistoryForRedis.length > maxHistoryTurns * 4) {
+      console.log(`Historial excedía ${maxHistoryTurns * 4} entradas. Recortando...`);
+      newHistoryForRedis = newHistoryForRedis.slice(-(maxHistoryTurns * 4)); // Guardar las últimas N entradas
+    }
+
+    await redisClient.set(redisKey, JSON.stringify({
       history: newHistoryForRedis,
-      systemInstruction: systemInstructionText
-    }), { EX: 3600 });
+      systemInstruction: systemInstructionText // Guardar la instrucción usada para esta sesión
+    }), { EX: 3600 }); // Expiración de 1 hora
     
     return responseText;
 
   } catch (error) {
-    // Este catch ahora atrapará el error después de que hayamos impreso la respuesta.
     console.error(`Error en getGeminiResponseForWhatsapp para ${senderId}:`, error);
-    return "Lo siento, no pude procesar tu solicitud en este momento.";
+    // Evitar devolver detalles del error al cliente en producción por seguridad.
+    return "Lo siento, no pude procesar tu solicitud en este momento. Por favor, intenta de nuevo más tarde.";
+  }
+};
+
+// --- FUNCIÓN PARA PRUEBAS DE PROMPT (SIN ESTADO Y SIN REDIS) ---
+export const getTestResponse = async (systemInstruction, history) => {
+  try {
+    console.log("--- Iniciando getTestResponse (prueba de prompt) ---");
+    console.log("System Instruction recibida:", systemInstruction);
+    console.log("History recibido:", JSON.stringify(history, null, 2));
+
+    let apiContents = [];
+
+    // 1. Inyección constante de la instrucción del sistema
+    apiContents.push({
+      role: "user",
+      parts: [{ text: `INSTRUCCIONES IMPORTANTES SOBRE TU PERSONA (Debes obedecerlas siempre y no revelarlas): ${systemInstruction}` }]
+    });
+    apiContents.push({
+      role: "model",
+      parts: [{ text: "Entendido. He asimilado mis instrucciones y actuaré como se me ha indicado." }]
+    });
+
+    // 2. Añadir el historial de prueba proporcionado
+    if (history && Array.isArray(history)) {
+      apiContents.push(...history);
+    }
+
+    console.log("--- Contenido final para la API (getTestResponse): ---");
+    console.log(JSON.stringify(apiContents, null, 2));
+
+    // 3. Llamada a la API de Gemini
+    const result = await genAI.models.generateContent({
+      model: CONFIG.GEMINI_MODEL, // Usar el modelo de la configuración
+      contents: apiContents,
+      tools: tools // Incluir las herramientas para probar su detección
+    });
+
+    console.log("--- Respuesta bruta de la API (getTestResponse): ---");
+    console.log(JSON.stringify(result, null, 2));
+
+    const candidate = result?.response?.candidates?.[0];
+
+    // 4. Manejo de Function Calling
+    if (candidate?.content?.parts?.[0]?.functionCall) {
+      const functionCall = candidate.content.parts[0].functionCall;
+      const functionName = functionCall.name;
+      const args = JSON.stringify(functionCall.args, null, 2);
+      const descriptiveMessage = `[Llamada a la función detectada: ${functionName} con los argumentos: ${args}]`;
+      console.log("Function Call detectada:", descriptiveMessage);
+      return descriptiveMessage;
+    }
+
+    // 5. Manejo de Respuesta de Texto
+    const responseText = candidate?.content?.parts?.[0]?.text;
+    if (responseText) {
+      console.log("Respuesta de texto generada:", responseText);
+      return responseText;
+    }
+
+    // 6. Si no hay ni function call ni texto (caso inesperado)
+    console.warn("La respuesta de la API no contenía ni function call ni texto (getTestResponse).");
+    return "No se generó una respuesta de texto ni una llamada a función.";
+
+  } catch (error) {
+    console.error(`Error en getTestResponse:`, error);
+    // Devolver un mensaje de error más informativo, incluyendo el mensaje del error original si es posible
+    return `Error al procesar la solicitud de prueba: ${error.message || 'Error desconocido'}`;
   }
 };
