@@ -90,48 +90,50 @@ app.post('/api/test-prompt', async (req, res) => {
 });
 
 
-// --- Rutas para Módulo 2: Monitor de Chats en Vivo (OMNICANAL) ---
+// --- Rutas para Módulo 2: Monitor de Chats en Vivo (OMNICANAL COMPLETO) ---
 
+// Esta ruta ya está perfecta y no necesita cambios.
 app.get('/api/sessions', async (req, res) => {
   try {
-    console.log("Buscando sesiones activas de TODAS las plataformas...");
-
-    // 1. Buscamos las claves de ambas plataformas en paralelo
     const [whatsappKeys, messengerKeys] = await Promise.all([
       redisClient.keys('whatsapp_session:*'),
       redisClient.keys('messenger_session:*')
     ]);
 
-    // 2. Procesamos cada lista para crear objetos con ID y plataforma
     const whatsappSessions = whatsappKeys.map(key => ({
       id: key.replace('whatsapp_session:', ''),
       platform: 'whatsapp'
     }));
-
     const messengerSessions = messengerKeys.map(key => ({
       id: key.replace('messenger_session:', ''),
       platform: 'messenger'
     }));
 
-    // 3. Unimos ambas listas en una sola y la enviamos
     const allSessions = [...whatsappSessions, ...messengerSessions];
-
-    console.log(`Se encontraron ${allSessions.length} sesiones activas en total.`);
     res.status(200).json(allSessions);
-
   } catch (error) {
-    console.error('Error al obtener sesiones omnicanal de Redis:', error);
     res.status(500).json({ message: 'Error al obtener la lista de sesiones.' });
   }
 });
 
-app.get('/api/sessions/:senderId', async (req, res) => {
+
+// --- INICIO DE LA MODIFICACIÓN ---
+
+// GET /api/sessions/:platform/:userId - Ruta genérica para obtener detalles de CUALQUIER sesión
+app.get('/api/sessions/:platform/:userId', async (req, res) => {
   try {
-    const { senderId } = req.params;
-    const redisKey = `whatsapp_session:${senderId}`;
+    const { platform, userId } = req.params;
+
+    // Validación para asegurar que la plataforma es una de las soportadas
+    if (!['whatsapp', 'messenger'].includes(platform)) {
+        return res.status(400).json({ message: 'Plataforma no soportada.' });
+    }
+
+    const redisKey = `${platform}_session:${userId}`;
     const serializedSession = await redisClient.get(redisKey);
+
     if (!serializedSession) {
-      return res.status(404).json({ message: `Sesión no encontrada para el senderId: ${senderId}` });
+      return res.status(404).json({ message: `Sesión no encontrada para ${platform}:${userId}` });
     }
     res.status(200).json(JSON.parse(serializedSession));
   } catch (error) {
@@ -140,21 +142,38 @@ app.get('/api/sessions/:senderId', async (req, res) => {
   }
 });
 
-app.post('/api/sessions/:senderId/instruction', async (req, res) => {
+
+// POST /api/sessions/:platform/:userId/instruction - Ruta genérica para actualizar la personalidad
+app.post('/api/sessions/:platform/:userId/instruction', async (req, res) => {
   try {
-    const { senderId } = req.params;
+    const { platform, userId } = req.params;
     const { newInstruction } = req.body;
+
+    if (!['whatsapp', 'messenger'].includes(platform)) {
+        return res.status(400).json({ message: 'Plataforma no soportada.' });
+    }
     if (typeof newInstruction !== 'string') {
       return res.status(400).json({ message: 'La propiedad "newInstruction" es requerida.' });
     }
-    const success = await setSystemInstructionForWhatsapp(senderId, newInstruction);
+
+    // Llamamos a la función correcta basándonos en la plataforma
+    let success = false;
+    if (platform === 'whatsapp') {
+        success = await setSystemInstructionForWhatsapp(userId, newInstruction);
+    } else if (platform === 'messenger') {
+        // Asumiendo que ya tienes `setSystemInstructionForMessenger` en geminiService.js
+        // Si no, es tan simple como `return _updateSessionInstruction(...)`
+        const { setSystemInstructionForMessenger } = await import('./services/geminiService.js');
+        success = await setSystemInstructionForMessenger(userId, newInstruction);
+    }
+
     if (success) {
       res.status(200).json({ message: `Instrucción actualizada con éxito.` });
     } else {
       res.status(500).json({ message: `Error al actualizar la instrucción.` });
     }
   } catch (error) {
-    console.error(`Error en POST /api/sessions/${req.params.senderId}/instruction:`, error);
+    console.error(`Error en POST /api/sessions/:platform/:userId/instruction:`, error);
     res.status(500).json({ message: 'Error interno del servidor.' });
   }
 });
