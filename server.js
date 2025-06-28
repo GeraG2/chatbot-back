@@ -90,15 +90,37 @@ app.post('/api/test-prompt', async (req, res) => {
 });
 
 
-// --- Rutas para Módulo 2: Monitor de Chats en Vivo ---
+// --- Rutas para Módulo 2: Monitor de Chats en Vivo (OMNICANAL) ---
 
 app.get('/api/sessions', async (req, res) => {
   try {
-    const keys = await redisClient.keys('whatsapp_session:*');
-    const senderIds = keys.map(key => key.replace('whatsapp_session:', ''));
-    res.status(200).json(senderIds);
+    console.log("Buscando sesiones activas de TODAS las plataformas...");
+
+    // 1. Buscamos las claves de ambas plataformas en paralelo
+    const [whatsappKeys, messengerKeys] = await Promise.all([
+      redisClient.keys('whatsapp_session:*'),
+      redisClient.keys('messenger_session:*')
+    ]);
+
+    // 2. Procesamos cada lista para crear objetos con ID y plataforma
+    const whatsappSessions = whatsappKeys.map(key => ({
+      id: key.replace('whatsapp_session:', ''),
+      platform: 'whatsapp'
+    }));
+
+    const messengerSessions = messengerKeys.map(key => ({
+      id: key.replace('messenger_session:', ''),
+      platform: 'messenger'
+    }));
+
+    // 3. Unimos ambas listas en una sola y la enviamos
+    const allSessions = [...whatsappSessions, ...messengerSessions];
+
+    console.log(`Se encontraron ${allSessions.length} sesiones activas en total.`);
+    res.status(200).json(allSessions);
+
   } catch (error) {
-    console.error('Error al obtener sesiones de Redis:', error);
+    console.error('Error al obtener sesiones omnicanal de Redis:', error);
     res.status(500).json({ message: 'Error al obtener la lista de sesiones.' });
   }
 });
