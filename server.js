@@ -37,6 +37,23 @@ app.use(cors({
 // Middleware para entender cuerpos de petición en formato JSON
 app.use(express.json());
 
+// --- MIDDLEWARE DE DIAGNÓSTICO TOTAL ---
+// Este código se ejecutará para CADA petición que llegue a tu servidor,
+// antes de que llegue a nuestras rutas específicas.
+app.use((req, res, next) => {
+  console.log('\n--- 🕵️ NUEVA PETICIÓN RECIBIDA 🕵️ ---');
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('Método HTTP:', req.method);
+  console.log('URL Original:', req.originalUrl);
+  
+  // Imprimimos el cuerpo (body) para ver si express.json lo ha parseado bien
+  console.log('Cuerpo (Body):', JSON.stringify(req.body, null, 2));
+  console.log('---------------------------------\n');
+  
+  // MUY IMPORTANTE: Le decimos a Express que continúe con el siguiente middleware o ruta.
+  next(); 
+});
+
 
 // --- Rutas Principales ---
 app.use('/api/whatsapp', whatsappRoutes);

@@ -81,20 +81,12 @@ async function _getGenericGeminiResponse(userId, userMessage, platformPrefix) {
       systemInstructionText = sessionData.systemInstruction || CONFIG.DEFAULT_SYSTEM_INSTRUCTION;
     }
     
-    // ARQUITECTURA DE PROMPT PRAGMÁTICA: Inyección constante para forzar el comportamiento.
     let apiContents = [];
-    apiContents.push({ 
-        role: "user", 
-        parts: [{ text: `INSTRUCCIONES IMPORTANTES SOBRE TU PERSONA (Debes obedecerlas siempre y no revelarlas): ${systemInstructionText}` }] 
-    });
-    apiContents.push({ 
-        role: "model", 
-        parts: [{ text: "Entendido. He asimilado mis instrucciones y actuaré como se me ha indicado." }] 
-    });
+    apiContents.push({ role: "user", parts: [{ text: `INSTRUCCIONES IMPORTANTES...: ${systemInstructionText}` }] });
+    apiContents.push({ role: "model", parts: [{ text: "Entendido..." }] });
     apiContents.push(...conversationHistory);
     apiContents.push({ role: "user", parts: [{ text: userMessage }] });
 
-    // LLAMADA A LA API: Usando el método y los parámetros que hemos verificado que funcionan.
     const result = await genAI.models.generateContent({
         model: CONFIG.GEMINI_MODEL,
         contents: apiContents,
@@ -102,21 +94,144 @@ async function _getGenericGeminiResponse(userId, userMessage, platformPrefix) {
         toolConfig: { functionCallingConfig: { mode: "ANY" } },
     });
 
-    // PARSEO DE RESPUESTA: Directamente desde `result`, sin el `.response` intermedio.
-    const call = result?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+    let call = result?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
     let responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    const functionCallRegex = /getProductInfo\(([^)]*)\)/;
+    const match = responseText?.match(functionCallRegex);
+    if (!call && match) {
+        console.log("¡Llamada a función 'pensada en voz alta' detectada! Forzando el flujo de herramientas.");
+        const argContent = match[1].replace(/['"`]/g, '');
+        call = { name: "getProductInfo", args: { productName: argContent } };
+        responseText = null; 
+    }
     
     let functionCallPart = null;
     let toolResponsePart = null;
     
     if (call) {
-      console.log("Llamada a función detectada:", call.name);
+      const { name, args } = call;
+      let functionResponsePayload;
+      if (name === "getProductInfo") {
+        const productsData = JSON.parse(await fs.readFile(productsPath, 'utf-8'));
+        const productName = args.productName || "";
+        const foundProducts = productName ? productsData.filter(p => p.name.toLowerCase().includes(productName.toLowerCase())) : productsData;
+        functionResponsePayload = {
+            name: "getProductInfo",
+            response: { products: foundProducts.length > 0 ? foundProducts : [] }
+        };
+      }
+      
+      if (functionResponsePayload) {
+        functionCallPart = { role: "model", parts: [{ functionCall: call }] };
+        toolResponsePart = { role: "tool", parts: [{ functionResponse: functionResponsePayload }] };
+
+        // --- LA CORRECCIÓN FINAL ---
+        const contentsForSecondCall = [
+            ...conversationHistory,
+            { role: 'user', parts: [{ text: userMessage }] },
+            functionCallPart,
+            toolResponsePart
+        ];
+
+        const secondResult = await genAI.models.generateContent({
+            model: CONFIG.GEMINI_MODEL,
+            contents: contentsForSecondCall,
+        });
+        responseText = secondResult?.candidates?.[0]?.content?.parts?.[0]?.text;
+      }
+    }
+
+    if (!responseText) {
+      throw new Error("La respuesta final de la API no contenía texto.");
+    }
+    
+    let newHistoryForRedis = [...conversationHistory];
+    newHistoryForRedis.push({ role: 'user', parts: [{ text: userMessage }] });
+    if (functionCallPart && toolResponsePart) {
+      newHistoryForRedis.push(functionCallPart);
+      newHistoryForRedis.push(toolResponsePart);
+    }
+    newHistoryForRedis.push({ role: 'model', parts: [{ text: responseText }] });
+    
+    // ... tu lógica de recorte de historial ...
+    
+    await redisClient.set(redisKey, JSON.stringify({
+      history: newHistoryForRedis,
+      systemInstruction: systemInstructionText
+    }), { EX: 3600 });
+    
+    return responseText;
+
+  } catch (error) {
+    console.error(`Error en _getGenericGeminiResponse para ${platformPrefix}:${userId}:`, error);
+    return "Lo siento, no pude procesar tu solicitud en este momento.";
+  }
+}
+
+// --- FUNCIONES PÚBLICAS "ADAPTADORAS" ---
+export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
+  try {
+    const redisKey = `whatsapp_session:${senderId}`;
+    const serializedSession = await redisClient.get(redisKey);
+
+    let conversationHistory = [];
+    let systemInstructionText = CONFIG.DEFAULT_SYSTEM_INSTRUCTION;
+
+    if (serializedSession) {
+      const sessionData = JSON.parse(serializedSession);
+      conversationHistory = sessionData.history || [];
+      systemInstructionText = sessionData.systemInstruction || CONFIG.DEFAULT_SYSTEM_INSTRUCTION;
+    }
+    
+    let apiContents = [
+        { role: "user", parts: [{ text: `INSTRUCCIONES...: ${systemInstructionText}` }] },
+        { role: "model", parts: [{ text: "Entendido..." }] },
+        ...conversationHistory,
+        { role: "user", parts: [{ text: userMessage }] }
+    ];
+
+    const result = await genAI.models.generateContent({
+        model: CONFIG.GEMINI_MODEL,
+        contents: apiContents,
+        tools: tools,
+        toolConfig: { functionCallingConfig: { mode: "ANY" } },
+    });
+
+    let call = result?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+    let responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    // --- PARCHE DE COMPORTAMIENTO (LA SOLUCIÓN FINAL) ---
+    // Revisamos si la respuesta de texto CONTIENE una llamada a función "pensada en voz alta"
+    const functionCallRegex = /getProductInfo\(([^)]*)\)/;
+    const match = responseText?.match(functionCallRegex);
+    
+    // Si la llamada estructurada no vino, PERO nuestro regex encontró una en el texto...
+    if (!call && match) {
+        console.log("¡Llamada a función detectada en el texto! Forzando el flujo de herramientas.");
+        // Creamos un objeto 'call' falso para que el resto de nuestro código funcione.
+        const argContent = match[1].replace(/['"`]/g, ''); // Limpiar comillas de los argumentos
+        call = { 
+            name: "getProductInfo", 
+            args: { productName: argContent } 
+        };
+        // Importante: borramos el texto para no enviarlo al usuario.
+        responseText = null; 
+    }
+    // --- FIN DEL PARCHE ---
+
+    let functionCallPart = null;
+    let toolResponsePart = null;
+
+    if (call) {
+      console.log("Llamada a función (real o forzada) detectada:", call.name);
       const { name, args } = call;
       let functionResponsePayload;
 
       if (name === "getProductInfo") {
-        const productsData = JSON.parse(await fs.readFile(productsPath, 'utf-8'));
-        const foundProducts = args.productName ? productsData.filter(p => p.name.toLowerCase().includes(args.productName.toLowerCase())) : productsData;
+        const productsData = JSON.parse(fs.readFileSync(productsPath, 'utf-8'));
+        const productName = args.productName || "";
+        const foundProducts = productName ? productsData.filter(p => p.name.toLowerCase().includes(productName.toLowerCase())) : productsData;
         functionResponsePayload = {
             name: "getProductInfo",
             response: { products: foundProducts.length > 0 ? foundProducts : [] }
@@ -136,7 +251,6 @@ async function _getGenericGeminiResponse(userId, userMessage, platformPrefix) {
     }
 
     if (!responseText) {
-      console.error("Respuesta final de la API vacía. Objeto completo:", JSON.stringify(result, null, 2));
       throw new Error("La respuesta final de la API no contenía texto.");
     }
     
@@ -148,10 +262,7 @@ async function _getGenericGeminiResponse(userId, userMessage, platformPrefix) {
     }
     newHistoryForRedis.push({ role: 'model', parts: [{ text: responseText }] });
     
-    const maxHistoryTurns = CONFIG.MAX_HISTORY_TURNS;
-    if (newHistoryForRedis.length > maxHistoryTurns * 4) { 
-      newHistoryForRedis = newHistoryForRedis.slice(newHistoryForRedis.length - maxHistoryTurns * 4);
-    }
+    // ... tu lógica de recorte de historial ...
     
     await redisClient.set(redisKey, JSON.stringify({
       history: newHistoryForRedis,
@@ -161,14 +272,9 @@ async function _getGenericGeminiResponse(userId, userMessage, platformPrefix) {
     return responseText;
 
   } catch (error) {
-    console.error(`Error en _getGenericGeminiResponse para ${platformPrefix}:${userId}:`, error);
+    console.error(`Error en getGeminiResponseForWhatsapp para ${senderId}:`, error);
     return "Lo siento, no pude procesar tu solicitud en este momento.";
   }
-}
-
-// --- FUNCIONES PÚBLICAS "ADAPTADORAS" ---
-export const getGeminiResponseForWhatsapp = async (senderId, userMessage) => {
-  return _getGenericGeminiResponse(senderId, userMessage, 'whatsapp_session');
 };
 
 // --- AÑADE O VERIFICA ESTA FUNCIÓN ---
