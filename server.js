@@ -8,7 +8,11 @@ import fs from 'fs/promises';
 // --- Importaciones de Módulos Locales ---
 // Asume que el cliente de Redis está centralizado. Si no, descomenta la inicialización de abajo.
 import redisClient from './config/redisClient.js';
-import { setSystemInstructionForWhatsapp, getTestResponse } from './services/geminiService.js'; // <-- Importar getTestResponse
+import {
+    setSystemInstructionForWhatsapp,
+    setSystemInstructionForMessenger, // <-- Importarla aquí también
+    getTestResponse
+} from './services/geminiService.js';
 import whatsappRoutes from './routes/whatsappRoutes.js';
 import messengerRoutes from './routes/messengerRoutes.js'; // <-- AÑADIR ESTA LÍNEA
 // import adminRoutes from './routes/adminRoutes.js'; // Aún no se usa, pero está listo para la refactorización
@@ -161,9 +165,7 @@ app.post('/api/sessions/:platform/:userId/instruction', async (req, res) => {
     if (platform === 'whatsapp') {
         success = await setSystemInstructionForWhatsapp(userId, newInstruction);
     } else if (platform === 'messenger') {
-        // Asumiendo que ya tienes `setSystemInstructionForMessenger` en geminiService.js
-        // Si no, es tan simple como `return _updateSessionInstruction(...)`
-        const { setSystemInstructionForMessenger } = await import('./services/geminiService.js');
+        // Ya no necesitas el import dinámico aquí
         success = await setSystemInstructionForMessenger(userId, newInstruction);
     }
 
