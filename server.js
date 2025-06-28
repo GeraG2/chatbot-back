@@ -8,7 +8,11 @@ import fs from 'fs/promises';
 // --- Importaciones de Módulos Locales ---
 // Asume que el cliente de Redis está centralizado. Si no, descomenta la inicialización de abajo.
 import redisClient from './config/redisClient.js';
-import { setSystemInstructionForWhatsapp, getTestResponse } from './services/geminiService.js'; // <-- Importar getTestResponse
+import {
+    setSystemInstructionForWhatsapp,
+    setSystemInstructionForMessenger, // <-- Importarla aquí también
+    getTestResponse
+} from './services/geminiService.js';
 import whatsappRoutes from './routes/whatsappRoutes.js';
 import messengerRoutes from './routes/messengerRoutes.js'; // <-- AÑADIR ESTA LÍNEA
 // import adminRoutes from './routes/adminRoutes.js'; // Aún no se usa, pero está listo para la refactorización
@@ -90,26 +94,50 @@ app.post('/api/test-prompt', async (req, res) => {
 });
 
 
-// --- Rutas para Módulo 2: Monitor de Chats en Vivo ---
+// --- Rutas para Módulo 2: Monitor de Chats en Vivo (OMNICANAL COMPLETO) ---
 
+// Esta ruta ya está perfecta y no necesita cambios.
 app.get('/api/sessions', async (req, res) => {
   try {
-    const keys = await redisClient.keys('whatsapp_session:*');
-    const senderIds = keys.map(key => key.replace('whatsapp_session:', ''));
-    res.status(200).json(senderIds);
+    const [whatsappKeys, messengerKeys] = await Promise.all([
+      redisClient.keys('whatsapp_session:*'),
+      redisClient.keys('messenger_session:*')
+    ]);
+
+    const whatsappSessions = whatsappKeys.map(key => ({
+      id: key.replace('whatsapp_session:', ''),
+      platform: 'whatsapp'
+    }));
+    const messengerSessions = messengerKeys.map(key => ({
+      id: key.replace('messenger_session:', ''),
+      platform: 'messenger'
+    }));
+
+    const allSessions = [...whatsappSessions, ...messengerSessions];
+    res.status(200).json(allSessions);
   } catch (error) {
-    console.error('Error al obtener sesiones de Redis:', error);
     res.status(500).json({ message: 'Error al obtener la lista de sesiones.' });
   }
 });
 
-app.get('/api/sessions/:senderId', async (req, res) => {
+
+// --- INICIO DE LA MODIFICACIÓN ---
+
+// GET /api/sessions/:platform/:userId - Ruta genérica para obtener detalles de CUALQUIER sesión
+app.get('/api/sessions/:platform/:userId', async (req, res) => {
   try {
-    const { senderId } = req.params;
-    const redisKey = `whatsapp_session:${senderId}`;
+    const { platform, userId } = req.params;
+
+    // Validación para asegurar que la plataforma es una de las soportadas
+    if (!['whatsapp', 'messenger'].includes(platform)) {
+        return res.status(400).json({ message: 'Plataforma no soportada.' });
+    }
+
+    const redisKey = `${platform}_session:${userId}`;
     const serializedSession = await redisClient.get(redisKey);
+
     if (!serializedSession) {
-      return res.status(404).json({ message: `Sesión no encontrada para el senderId: ${senderId}` });
+      return res.status(404).json({ message: `Sesión no encontrada para ${platform}:${userId}` });
     }
     res.status(200).json(JSON.parse(serializedSession));
   } catch (error) {
@@ -118,21 +146,36 @@ app.get('/api/sessions/:senderId', async (req, res) => {
   }
 });
 
-app.post('/api/sessions/:senderId/instruction', async (req, res) => {
+
+// POST /api/sessions/:platform/:userId/instruction - Ruta genérica para actualizar la personalidad
+app.post('/api/sessions/:platform/:userId/instruction', async (req, res) => {
   try {
-    const { senderId } = req.params;
+    const { platform, userId } = req.params;
     const { newInstruction } = req.body;
+
+    if (!['whatsapp', 'messenger'].includes(platform)) {
+        return res.status(400).json({ message: 'Plataforma no soportada.' });
+    }
     if (typeof newInstruction !== 'string') {
       return res.status(400).json({ message: 'La propiedad "newInstruction" es requerida.' });
     }
-    const success = await setSystemInstructionForWhatsapp(senderId, newInstruction);
+
+    // Llamamos a la función correcta basándonos en la plataforma
+    let success = false;
+    if (platform === 'whatsapp') {
+        success = await setSystemInstructionForWhatsapp(userId, newInstruction);
+    } else if (platform === 'messenger') {
+        // Ya no necesitas el import dinámico aquí
+        success = await setSystemInstructionForMessenger(userId, newInstruction);
+    }
+
     if (success) {
       res.status(200).json({ message: `Instrucción actualizada con éxito.` });
     } else {
       res.status(500).json({ message: `Error al actualizar la instrucción.` });
     }
   } catch (error) {
-    console.error(`Error en POST /api/sessions/${req.params.senderId}/instruction:`, error);
+    console.error(`Error en POST /api/sessions/:platform/:userId/instruction:`, error);
     res.status(500).json({ message: 'Error interno del servidor.' });
   }
 });

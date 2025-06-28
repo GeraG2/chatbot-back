@@ -62,9 +62,37 @@ const tools = [{
 
 // --- FUNCIONES DE GESTIÓN DE SESIÓN ---
 async function _updateSessionInstruction(redisKey, newInstruction) {
-    // Implementación de la función...
+    try {
+        const serializedSession = await redisClient.get(redisKey);
+        let sessionData = {};
+
+        if (serializedSession) {
+            sessionData = JSON.parse(serializedSession);
+        } else {
+            // Si no hay sesión, creamos una nueva con historial vacío
+            sessionData.history = [];
+        }
+
+        sessionData.systemInstruction = newInstruction; // Actualizamos la instrucción
+
+        await redisClient.set(redisKey, JSON.stringify(sessionData), { EX: 3600 }); // Guardamos con TTL
+        console.log(`Instrucción del sistema actualizada para la clave ${redisKey} a: "${newInstruction}"`);
+        return true;
+    } catch (error) {
+        console.error(`Error al actualizar la instrucción del sistema para la clave ${redisKey}:`, error);
+        return false;
+    }
 }
-export const setSystemInstructionForWhatsapp = async (senderId, newInstruction) => { /*...*/ };
+
+export const setSystemInstructionForWhatsapp = async (senderId, newInstruction) => {
+    const redisKey = `whatsapp_session:${senderId}`;
+    return _updateSessionInstruction(redisKey, newInstruction);
+};
+
+export const setSystemInstructionForMessenger = async (senderId, newInstruction) => {
+    const redisKey = `messenger_session:${senderId}`;
+    return _updateSessionInstruction(redisKey, newInstruction);
+};
 
 // --- FUNCIÓN MOTOR GENÉRICA (LÓGICA CENTRAL) ---
 async function _getGenericGeminiResponse(userId, userMessage, platformPrefix) {
