@@ -3,6 +3,9 @@
 
 import { getGeminiResponseForMessenger } from '../services/geminiService.js';
 import { sendMessengerMessage } from '../services/messengerService.js';
+import fs from 'fs/promises';
+
+const clientsConfig = JSON.parse(await fs.readFile('./clients.json', 'utf-8'));
 
 // Función para la verificación inicial del webhook (GET)
 export const handleVerification = (req, res) => {
@@ -30,13 +33,21 @@ export const handleIncomingMessage = (req, res) => {
         try {
           if (event.message && event.message.text) {
             const senderId = event.sender.id;
+            const recipientId = event.recipient.id; // <-- El ID de tu Página
             const messageText = event.message.text;
-            console.log(`Mensaje recibido de Messenger senderId ${senderId}: "${messageText}"`);
 
-            // ¡La magia de la abstracción! Llamamos a la función genérica para Messenger
-            const responseText = await getGeminiResponseForMessenger(senderId, messageText);
+            // --- LÓGICA DE IDENTIFICACIÓN DE CLIENTE ---
+            const clientProfile = clientsConfig[recipientId];
+            if (!clientProfile) {
+              console.warn(`Mensaje recibido para una página no configurada: ${recipientId}`);
+              return; // Ignoramos el mensaje si no tenemos un perfil para esa página
+            }
+            console.log(`Petición recibida para el cliente: ${clientProfile.clientName}`);
+            // --- FIN DE LA LÓGICA ---
 
-            // Enviamos la respuesta de vuelta usando nuestro nuevo servicio
+            // Ahora llamamos al servicio pasándole el perfil completo del cliente
+            const responseText = await getGeminiResponseForMessenger(senderId, messageText, clientProfile);
+
             if(responseText) {
               await sendMessengerMessage(senderId, responseText);
             }

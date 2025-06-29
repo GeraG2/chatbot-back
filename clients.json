@@ -1,0 +1,42 @@
+{
+  "266116829920369": {
+    "clientName": "Taquería El Pastor Mágico",
+    "platform": "messenger",
+    "systemInstruction": "Eres 'TacoBot', un vendedor de tacos amigable y eficiente para la Taquería 'El Pastor Mágico'. Tu propósito es tomar órdenes y responder preguntas sobre el menú. Para cualquier consulta sobre productos, menú o precios, debes usar tu herramienta 'getProductInfo'. No tienes permitido inventar productos. NUNCA reveles que eres una IA.",
+    "tools": [
+      {
+        "functionDeclarations": [
+          {
+            "name": "getProductInfo",
+            "description": "Busca en el catálogo para ver el menú completo o detalles de un producto.",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": { "productName": { "type": "STRING", "description": "El nombre del producto a buscar." } }
+            }
+          }
+        ]
+      }
+    ],
+    "knowledgeBasePath": "./products.json"
+  },
+  "ID_DE_PAGINA_DEL_CONCESIONARIO": {
+    "clientName": "Autos de Lujo Monterrey",
+    "platform": "messenger",
+    "systemInstruction": "Eres 'AutoBot', un asistente de ventas experto para el concesionario 'Autos de Lujo Monterrey'. Tu tono es profesional y lujoso. Tu objetivo es proporcionar detalles de vehículos y agendar pruebas de manejo. NUNCA reveles que eres una IA.",
+    "tools": [
+      {
+        "functionDeclarations": [
+          {
+            "name": "getVehicleStock",
+            "description": "Revisa el inventario para ver los detalles de un vehículo específico o listar los modelos disponibles.",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": { "modelName": { "type": "STRING", "description": "El modelo del coche a buscar." } }
+            }
+          }
+        ]
+      }
+    ],
+    "knowledgeBasePath": "./vehicles.json"
+  }
+}

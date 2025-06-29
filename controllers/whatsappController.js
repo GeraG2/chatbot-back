@@ -4,6 +4,9 @@
 import { getGeminiResponseForWhatsapp } from '../services/geminiService.js';
 import { sendMessage, verifyWebhookSignature } from '../services/whatsappService.js';
 import process from 'process';
+import fs from 'fs/promises';
+
+const clientsConfig = JSON.parse(await fs.readFile('./clients.json', 'utf-8'));
 
 /**
  * Handles webhook verification (GET requests) from WhatsApp.
@@ -60,15 +63,34 @@ export const handleIncomingMessage = async (req, res) => {
         body.entry[0].changes[0].value.messages[0]) {
 
       const message = body.entry[0].changes[0].value.messages[0];
+      const recipientPhoneNumberId = body.entry[0].changes[0].value.metadata.phone_number_id; // ID of the WhatsApp Business Account phone number
 
       if (message.type === 'text') {
-        const senderId = message.from;
+        const senderId = message.from; // User's WhatsApp ID (phone number)
         const messageText = message.text.body;
-        console.log(`Received text message from ${senderId}: "${messageText}"`);
+
+        // --- LÓGICA DE IDENTIFICACIÓN DE CLIENTE ---
+        // WhatsApp webhooks use the business phone number ID to identify which of your numbers received the message.
+        // This ID is found in `body.entry[0].changes[0].value.metadata.phone_number_id`
+        const clientProfile = clientsConfig[recipientPhoneNumberId];
+
+        if (!clientProfile) {
+          console.warn(`Mensaje recibido para un número de WhatsApp no configurado: ${recipientPhoneNumberId} (de ${senderId})`);
+          // No retornamos aquí necesariamente, podríamos tener un comportamiento por defecto.
+          // Pero para seguir el patrón de messengerController, si no hay perfil, no procesamos específicamente.
+          // Sin embargo, WhatsApp espera un 200, así que el request terminará bien.
+          // Considerar si se debe enviar un mensaje de "no configurado" al usuario o loggear y nada más.
+          // Por ahora, solo logueamos y no procedemos a Gemini.
+          return res.sendStatus(200); // Aseguramos que WhatsApp recibe un 200 OK
+        }
+        console.log(`Petición recibida para el cliente WhatsApp: ${clientProfile.clientName} (Número ID: ${recipientPhoneNumberId}, Usuario: ${senderId})`);
+        // --- FIN DE LA LÓGICA ---
+
+        console.log(`Received text message from ${senderId} for client ${clientProfile.clientName}: "${messageText}"`);
 
         try {
-          // Get response from Gemini
-          const geminiResponse = await getGeminiResponseForWhatsapp(senderId, messageText);
+          // Get response from Gemini, ahora pasando el clientProfile
+          const geminiResponse = await getGeminiResponseForWhatsapp(senderId, messageText, clientProfile);
 
           // Send the response back to the user via WhatsApp
           if (geminiResponse) {
