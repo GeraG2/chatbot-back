@@ -68,24 +68,27 @@ app.use('/api/messenger', messengerRoutes); // <-- AÑADIR ESTA LÍNEA
 
 // --- Rutas para Módulo "Entrenador de IA" (Prueba de Prompts) ---
 app.post('/api/test-prompt', async (req, res) => {
+  console.log("-> Entrando al endpoint /api/test-prompt.");
   try {
-    const { systemInstruction, history } = req.body;
+    const { systemInstruction, history, userMessage } = req.body; // Asumimos que también podrías enviar userMessage
 
-    // Validación de entradas
     if (!systemInstruction || typeof systemInstruction !== 'string') {
-      return res.status(400).json({ message: 'La propiedad "systemInstruction" (string) es requerida.' });
+      return res.status(400).json({ message: 'La propiedad "systemInstruction" es requerida.' });
     }
     if (!history || !Array.isArray(history)) {
-      // Permitimos que el historial esté vacío, pero debe ser un array
-      return res.status(400).json({ message: 'La propiedad "history" (array) es requerida, puede ser un array vacío.' });
+      return res.status(400).json({ message: 'La propiedad "history" es requerida.' });
     }
 
-    const responseText = await getTestResponse(systemInstruction, history);
+    console.log("-> Llamando a getTestResponse desde el servidor...");
+    // Asegúrate de pasar todos los parámetros necesarios
+    const responseText = await getTestResponse(systemInstruction, history, userMessage || ""); 
+    console.log("-> getTestResponse devolvió:", responseText);
+
     res.status(200).json({ responseText });
 
   } catch (error) {
-    console.error('Error en el endpoint /api/test-prompt:', error);
-    res.status(500).json({ message: 'Error interno del servidor al procesar la prueba de prompt.', error: error.message });
+    console.error("-> ERROR en el endpoint /api/test-prompt:", error);
+    res.status(500).json({ message: 'Error interno del servidor.', error: error.message });
   }
 });
 

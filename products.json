@@ -19,5 +19,12 @@
     "description": "Una bebida bien fría para acompañar tus tacos.",
     "price": 30,
     "stock": 100
+  },
+  {
+    "id": "prod_1751131440400",
+    "name": "pizza",
+    "description": "Grande",
+    "price": 150,
+    "stock": 2
   }
 ]
