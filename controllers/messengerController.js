@@ -1,10 +1,26 @@
-// File: controllers/messengerController.js
-// Description: Maneja los webhooks y mensajes entrantes de Facebook Messenger.
+// File: controllers/messengerController.js (Versión Final Multi-Cliente)
 
 import { getGeminiResponseForMessenger } from '../services/geminiService.js';
 import { sendMessengerMessage } from '../services/messengerService.js';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Función para la verificación inicial del webhook (GET)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const CLIENTS_FILE_PATH = path.join(__dirname, '..', 'clients.json');
+
+let clientsConfig = []; // Lo inicializamos como un array
+(async () => {
+    try {
+        const data = await fs.readFile(CLIENTS_FILE_PATH, 'utf-8');
+        clientsConfig = JSON.parse(data);
+        console.log('✅ Registro de clientes para Messenger cargado con éxito.');
+    } catch (error) {
+        console.error(`❌ Error fatal: No se pudo cargar ${CLIENTS_FILE_PATH}.`, error);
+    }
+})();
+
 export const handleVerification = (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -14,29 +30,36 @@ export const handleVerification = (req, res) => {
     console.log("✅ Webhook de Messenger verificado con éxito.");
     res.status(200).send(challenge);
   } else {
-    console.warn("⚠️ Falló la verificación del webhook de Messenger. Tokens no coinciden.");
+    console.warn("⚠️ Falló la verificación del webhook de Messenger.");
     res.sendStatus(403);
   }
 };
 
-// Función para manejar los mensajes entrantes (POST)
 export const handleIncomingMessage = (req, res) => {
   const body = req.body;
 
   if (body.object === 'page') {
     body.entry.forEach(entry => {
       entry.messaging.forEach(async event => {
-        // Envolvemos toda la lógica en un try...catch
         try {
           if (event.message && event.message.text) {
             const senderId = event.sender.id;
+            const recipientId = event.recipient.id;
             const messageText = event.message.text;
-            console.log(`Mensaje recibido de Messenger senderId ${senderId}: "${messageText}"`);
+            
+            const clientProfile = clientsConfig.find(c => c.clientId === recipientId);
 
-            // ¡La magia de la abstracción! Llamamos a la función genérica para Messenger
-            const responseText = await getGeminiResponseForMessenger(senderId, messageText);
+            if (!clientProfile) {
+              console.warn(`Mensaje recibido para una página no configurada: ${recipientId}`);
+              return; 
+            }
+            
+            console.log(`Petición recibida para el cliente: ${clientProfile.clientName}`);
 
-            // Enviamos la respuesta de vuelta usando nuestro nuevo servicio
+            // --- ¡LA CORRECCIÓN ESTÁ AQUÍ! ---
+            // Nos aseguramos de pasar los TRES argumentos a la función del servicio.
+            const responseText = await getGeminiResponseForMessenger(senderId, messageText, clientProfile);
+            
             if(responseText) {
               await sendMessengerMessage(senderId, responseText);
             }
@@ -46,8 +69,6 @@ export const handleIncomingMessage = (req, res) => {
         }
       });
     });
-
-    // Respondemos a Meta con 200 OK para confirmar que recibimos el evento
     res.status(200).send('EVENT_RECEIVED');
   } else {
     res.sendStatus(404);

@@ -1,0 +1,21 @@
+{
+  "clientId": "987654321098765",
+  "clientName": "Autos de Lujo Monterrey",
+  "platform": "messenger",
+  "systemInstruction": "Eres 'AutoBot', un asistente de ventas de alta gama para el concesionario 'Autos de Lujo Monterrey'. Tu tono es profesional y elegante. Tu objetivo es proporcionar detalles de vehículos y agendar pruebas de manejo. NUNCA reveles que eres una IA.",
+  "tools": [
+    {
+      "functionDeclarations": [
+        {
+          "name": "getVehicleInfo",
+          "description": "Revisa el inventario de vehículos para ver los detalles de un coche específico o listar los modelos disponibles.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": { "modelName": { "type": "STRING" } }
+          }
+        }
+      ]
+    }
+  ],
+  "knowledgeBasePath": "./vehicles.json"
+}

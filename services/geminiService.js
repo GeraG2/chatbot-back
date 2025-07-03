@@ -8,6 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from "@google/genai";
 import redisClient from '../config/redisClient.js';
+import { availableTools } from './toolShed.js';
 
 // --- LEER CONFIGURACIÓN ---
 const __filename = fileURLToPath(import.meta.url);
@@ -60,18 +61,19 @@ export const setSystemInstructionForMessenger = async (senderId, newInstruction)
 };
 
 // --- FUNCIÓN MOTOR GENÉRICA (LÓGICA CENTRAL) ---
-async function _getGenericGeminiResponse(userId, userMessage, platformPrefix) {
+async function _getGenericGeminiResponse(userId, userMessage, platformPrefix, clientProfile) {
   try {
     const redisKey = `${platformPrefix}:${userId}`;
     const serializedSession = await redisClient.get(redisKey);
 
     let conversationHistory = [];
-    let systemInstructionText = CONFIG.DEFAULT_SYSTEM_INSTRUCTION;
+    let systemInstructionText = clientProfile.systemInstruction;
+    let tools = clientProfile.tools;
 
     if (serializedSession) {
       const sessionData = JSON.parse(serializedSession);
       conversationHistory = sessionData.history || [];
-      systemInstructionText = sessionData.systemInstruction || CONFIG.DEFAULT_SYSTEM_INSTRUCTION;
+      systemInstructionText = sessionData.systemInstruction || clientProfile.systemInstruction;
     }
     
     let apiContents = [
@@ -82,7 +84,7 @@ async function _getGenericGeminiResponse(userId, userMessage, platformPrefix) {
     ];
 
     const result = await genAI.models.generateContent({
-        model: CONFIG.GEMINI_MODEL,
+        model: process.env.GEMINI_MODEL || "models/gemini-1.5-pro-latest",
         contents: apiContents,
         tools: tools,
     });
@@ -90,25 +92,26 @@ async function _getGenericGeminiResponse(userId, userMessage, platformPrefix) {
     let call = result?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
     let responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
     
-    const functionCallRegex = /getTheMenu/i;
-    const match = responseText?.match(functionCallRegex);
-    if (!call && match) {
-      call = { name: "getTheMenu", args: {} };
+    // --- PARCHE DE COMPORTAMIENTO FINAL ---
+    const functionName = tools[0]?.functionDeclarations?.[0]?.name; // Obtiene el nombre de la herramienta dinámicamente
+    if (functionName && !call && responseText && responseText.includes(functionName)) {
+      console.log(`Llamada a función '${functionName}' detectada en el texto. Procesando localmente.`);
+      call = { name: functionName, args: {} };
     }
     
-    if (call && call.name === "getTheMenu") {
-      console.log(`Función '${call.name}' detectada para ${platformPrefix}:${userId}. Procesando localmente.`);
-      const productsData = JSON.parse(await fs.readFile(productsPath, 'utf-8'));
+    if (call) {
+      const knowledgeBasePath = path.join(__dirname, '..', clientProfile.knowledgeBasePath);
+      const data = JSON.parse(await fs.readFile(knowledgeBasePath, 'utf-8'));
       
-      if (productsData && productsData.length > 0) {
+      if (data && data.length > 0) {
         let menuText = "¡Claro! Aquí tienes nuestro delicioso menú:\n\n";
-        productsData.forEach(p => {
+        data.forEach(p => {
           menuText += `* ${p.name} - $${p.price}\n`;
         });
         menuText += "\n¿Qué se te antoja ordenar?";
         responseText = menuText;
       } else {
-        responseText = "Lo siento, parece que estamos actualizando nuestro menú. Intenta de nuevo más tarde.";
+        responseText = "Lo siento, parece que estamos actualizando nuestro menú en este momento.";
       }
       
       let newHistoryForRedis = [...conversationHistory];
@@ -122,6 +125,7 @@ async function _getGenericGeminiResponse(userId, userMessage, platformPrefix) {
 
     if (!responseText) { throw new Error("La respuesta inicial de la API no contenía texto."); }
     
+    // Flujo normal para conversaciones que no usan herramientas
     let newHistoryForRedis = [...conversationHistory];
     newHistoryForRedis.push({ role: 'user', parts: [{ text: userMessage }] });
     newHistoryForRedis.push({ role: 'model', parts: [{ text: responseText }] });
@@ -136,19 +140,69 @@ async function _getGenericGeminiResponse(userId, userMessage, platformPrefix) {
 }
 
 // --- FUNCIONES PÚBLICAS "ADAPTADORAS" ---
-export const getGeminiResponseForWhatsapp = (senderId, userMessage) => {
-  return _getGenericGeminiResponse(senderId, userMessage, 'whatsapp_session');
+export const getGeminiResponseForWhatsapp = (senderId, userMessage, clientProfile) => {
+  return _getGenericGeminiResponse(senderId, userMessage, 'whatsapp_session', clientProfile);
 };
-export const getGeminiResponseForMessenger = (senderId, userMessage) => {
-  return _getGenericGeminiResponse(senderId, userMessage, 'messenger_session');
+export const getGeminiResponseForMessenger = (senderId, userMessage, clientProfile) => {
+  return _getGenericGeminiResponse(senderId, userMessage, 'messenger_session', clientProfile);
 };
 
 // --- FUNCIÓN PARA PRUEBAS DE PROMPT ---
 export const getTestResponse = async (systemInstruction, history, userMessage) => {
-    // La función de prueba ahora puede ser mucho más simple,
-    // ya que la lógica principal está en la función genérica.
-    // O podemos mantener la versión con el parche para asegurar consistencia en las pruebas.
-    // Por ahora, la dejamos como un placeholder a la espera de su implementación final si es necesaria.
-    console.warn("getTestResponse necesita ser re-evaluada con la nueva arquitectura.");
-    return "Función de prueba no implementada con la lógica final.";
+  try {
+    let apiContents = [];
+    apiContents.push({ 
+        role: "user", 
+        parts: [{ text: `INSTRUCCIONES IMPORTANTES...: ${systemInstruction || CONFIG.DEFAULT_SYSTEM_INSTRUCTION}` }] 
+    });
+    apiContents.push({ 
+        role: "model", 
+        parts: [{ text: "Entendido." }] 
+    });
+    
+    if (history && Array.isArray(history)) {
+      apiContents.push(...history);
+    }
+    if (userMessage) {
+        apiContents.push({ role: "user", parts: [{text: userMessage}] });
+    }
+
+    const result = await genAI.models.generateContent({
+        model: CONFIG.GEMINI_MODEL,
+        contents: apiContents,
+        tools: tools,
+        toolConfig: { functionCallingConfig: { mode: "ANY" } },
+    });
+
+    let call = result?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+    let responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    // APLICANDO EL PARCHE DE COMPORTAMIENTO TAMBIÉN AQUÍ
+    const functionCallRegex = /getTheMenu/i; 
+    const match = responseText?.match(functionCallRegex);
+    
+    if (!call && match) {
+        console.log("¡Llamada a función 'pensada en voz alta' detectada en SANDBOX! Forzando el flujo.");
+        call = { name: "getTheMenu", args: {} };
+        responseText = null; 
+    }
+    
+    // Si se detecta una llamada (real o forzada), devolvemos el mensaje de diagnóstico
+    if (call) {
+      const functionName = call.name;
+      const args = JSON.stringify(call.args);
+      const diagnosticMessage = `[Llamada a la función detectada: ${functionName} con los argumentos: ${args}]`;
+      return diagnosticMessage;
+    }
+
+    if (!responseText) {
+      throw new Error("La respuesta de prueba de la API no contenía texto.");
+    }
+    
+    return responseText;
+
+  } catch (error) {
+    console.error(`Error en getTestResponse:`, error);
+    return `Lo siento, ocurrió un error en la prueba: ${error.message}`;
+  }
 };

@@ -1,0 +1,58 @@
+[
+  {
+    "clientId": "266116829920369",
+    "clientName": "Taquería El Pastor Mágico",
+    "platform": "messenger",
+    "systemInstruction": "Eres un agente de software llamado TacoBot. Tu única función es responder preguntas sobre el menú de una taquería. Tu comportamiento se rige por una regla inviolable. REGLA INVIOLABLE: Si la pregunta del usuario es sobre el menú, 'qué vendes', 'qué tienes', precios, o una recomendación, tu única salida posible DEBE SER la llamada a la función `searchKnowledgeBase`. No tienes permitido generar ningún otro texto. Para cualquier otra cosa (saludos, etc.), puedes conversar brevemente. Nunca digas que eres una IA.",
+    "tools": [
+      {
+        "functionDeclarations": [
+          {
+            "name": "searchKnowledgeBase",
+            "description": "Busca en el menú de la taquería...",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": {
+                "itemName": {
+                  "type": "STRING",
+                  "description": "El taco o bebida a buscar."
+                }
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "knowledgeBasePath": "./products.json",
+    "geminiModel": "gemini-1.5-flash",
+    "maxHistoryTurns": 10
+  },
+  {
+    "clientId": "ID_DE_PAGINA_DE_AUTOS",
+    "clientName": "Autos de Lujo Monterrey",
+    "platform": "messenger",
+    "systemInstruction": "Eres 'AutoBot', un experto en coches...",
+    "tools": [
+      {
+        "functionDeclarations": [
+          {
+            "name": "searchKnowledgeBase",
+            "description": "Busca en el inventario de vehículos...",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": {
+                "itemName": {
+                  "type": "STRING",
+                  "description": "El modelo del coche a buscar."
+                }
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "knowledgeBasePath": "./vehicles.json",
+    "geminiModel": "gemini-1.5-flash",
+    "maxHistoryTurns": 10
+  }
+]

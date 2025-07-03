@@ -26,5 +26,26 @@
     "description": "Grande",
     "price": 150,
     "stock": 2
+  },
+  {
+    "name": "Elote",
+    "description": "En vaso",
+    "price": "15",
+    "stock": "",
+    "id": "prod_1751515743677"
+  },
+  {
+    "name": "Agua",
+    "description": "1 litro",
+    "price": "15",
+    "stock": "",
+    "id": "prod_1751519730208"
+  },
+  {
+    "name": "Jugo de naranja",
+    "description": "un vaso de jugo",
+    "price": "20",
+    "stock": "10",
+    "id": "prod_1751519761067"
   }
 ]
