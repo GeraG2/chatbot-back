@@ -439,7 +439,7 @@ app.delete('/api/clients/:clientId/products/:productId', async (req, res) => {
 
 
 // --- Iniciar el servidor ---
-const HOST = '0.0.0.0'; // Escuchar en todas las interfaces de red disponibles
+const HOST = '0.0.0.0:8080'; // Escuchar en todas las interfaces de red disponibles
 const PORT = process.env.PORT || 5001;
 
 app.listen(PORT, HOST, () => {
