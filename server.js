@@ -439,6 +439,9 @@ app.delete('/api/clients/:clientId/products/:productId', async (req, res) => {
 
 
 // --- Iniciar el servidor ---
-app.listen(PORT, () => {
-  console.log(`Servidor escuchando en el puerto ${PORT}`);
+const HOST = '0.0.0.0'; // Escuchar en todas las interfaces de red disponibles
+const PORT = process.env.PORT || 5001;
+
+app.listen(PORT, HOST, () => {
+  console.log(`Servidor escuchando en http://${HOST}:${PORT}`);
 });
