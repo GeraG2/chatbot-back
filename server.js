@@ -21,6 +21,7 @@ import messengerRoutes from './routes/messengerRoutes.js'; // <-- AÑADIR ESTA L
 
 const app = express();
 const PORT = process.env.PORT || 5001;
+const HOST = '0.0.0.0:8080';
 
 // --- CÁLCULO DE RUTAS ---
 // Calculamos __dirname de la forma moderna para Módulos ES
@@ -439,9 +440,6 @@ app.delete('/api/clients/:clientId/products/:productId', async (req, res) => {
 
 
 // --- Iniciar el servidor ---
-const HOST = '0.0.0.0:8080'; // Escuchar en todas las interfaces de red disponibles
-const PORT = process.env.PORT || 5001;
-
 app.listen(PORT, HOST, () => {
   console.log(`Servidor escuchando en http://${HOST}:${PORT}`);
 });
