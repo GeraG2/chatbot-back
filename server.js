@@ -21,7 +21,7 @@ import messengerRoutes from './routes/messengerRoutes.js'; // <-- AÑADIR ESTA L
 
 const app = express();
 const PORT = process.env.PORT || 5001;
-const HOST = '0.0.0.0:8080';
+const HOST = '0.0.0.0';
 
 // --- CÁLCULO DE RUTAS ---
 // Calculamos __dirname de la forma moderna para Módulos ES
