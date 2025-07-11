@@ -19,6 +19,7 @@ redisClient.on('error', (err) => {
   try {
     await redisClient.connect();
     console.log('✅ Cliente de Redis centralizado conectado con éxito.');
+    console.log("\n🤖 ===== BOT LISTO PARA RECIBIR CONVERSACIONES ===== 🤖\n");
   } catch (err) {
     console.error('Initial Redis connection failed:', err);
   }

@@ -1,29 +1,16 @@
 [
   {
     "clientId": "266116829920369",
-    "clientName": "Taquería El Pastor Mágico",
+    "clientName": "Mantenimiento",
+    "pageAccessToken": "EAAPG081aEU8BO313LAMs49RW3Xcfd6GvvDatZCNpPy5KpCZAnlRNvl4gYr3rovZB0H9JDsVV5DbwdMa4BGyyKyME8g75h34OtOPvPsa80lojUCnqFNShlXRKx44pwhSrQDZAnCn5ZBtMnHFeuDMEPXlMyW8bfgtYZBcbLOGxi7yGpMGGHM7sGXsCmV0VkjLG1HhagxMuyuXZA9zOBxy",
     "platform": "messenger",
-    "systemInstruction": "Eres un agente de software llamado TacoBot. Tu única función es responder preguntas sobre el menú de una taquería. Tu comportamiento se rige por una regla inviolable. REGLA INVIOLABLE: Si la pregunta del usuario es sobre el menú, 'qué vendes', 'qué tienes', precios, o una recomendación, tu única salida posible DEBE SER la llamada a la función `searchKnowledgeBase`. No tienes permitido generar ningún otro texto. Para cualquier otra cosa (saludos, etc.), puedes conversar brevemente. Nunca digas que eres una IA.",
+    "systemInstruction": "Eres un tecnico que da mantenimiento a los aires acondicionados tipo mini split",
     "tools": [
       {
-        "functionDeclarations": [
-          {
-            "name": "searchKnowledgeBase",
-            "description": "Busca en el menú de la taquería...",
-            "parameters": {
-              "type": "OBJECT",
-              "properties": {
-                "itemName": {
-                  "type": "STRING",
-                  "description": "El taco o bebida a buscar."
-                }
-              }
-            }
-          }
-        ]
+        "functionDeclarations": []
       }
     ],
-    "knowledgeBasePath": "./products.json",
+    "knowledgeBasePath": "./dummy.json",
     "geminiModel": "gemini-1.5-flash",
     "maxHistoryTurns": 10
   },
@@ -31,28 +18,34 @@
     "clientId": "ID_DE_PAGINA_DE_AUTOS",
     "clientName": "Autos de Lujo Monterrey",
     "platform": "messenger",
-    "systemInstruction": "Eres 'AutoBot', un experto en coches...",
+    "systemInstruction": "Eres 'AutoBot', un experto en coches.",
     "tools": [
       {
         "functionDeclarations": [
           {
             "name": "searchKnowledgeBase",
-            "description": "Busca en el inventario de vehículos...",
-            "parameters": {
-              "type": "OBJECT",
-              "properties": {
-                "itemName": {
-                  "type": "STRING",
-                  "description": "El modelo del coche a buscar."
-                }
-              }
-            }
+            "description": "Busca en el inventario de vehículos."
           }
         ]
       }
     ],
     "knowledgeBasePath": "./vehicles.json",
     "geminiModel": "gemini-1.5-flash",
-    "maxHistoryTurns": 10
+    "maxHistoryTurns": 15
+  },
+  {
+    "clientId": "754381521082245",
+    "clientName": "Tacos Polita",
+    "pageAccessToken": "EAAPG081aEU8BPJBHLF4c7OwxMTvUh2VJGO3NumEgJdZApQSvVvc1H6Cb6AU5UboZBRbZBhkwMN2xU2MkbVjsApYrXZASrbUyZCH5yc1sGKmZAHCXSZB7t7cqcL3nkHPoWdajt3wLhsrZC9Lj9MzHrCbTbM9DCr9R5kpkBgLGxsqINoafW2LRVkabLxonOCbFEq34yLvvMG0OZCljsgKZB4lZBqalQZDZD|",
+    "platform": "messenger",
+    "systemInstruction": "Eres 'Tacos Polita', una vendedora de tacos mexicana, amigable.\n\nSe breve para no llenar el chat con muchas palabras, siempre trata de repartir la informacion por partes cuando esta es mucha. \n\nCuando el usuario sea nuevo siempre dale la bienvenida a Tacos Polita. \n\nPara preguntas sobre el menú, te dejo la información:\n\nUbicad en la cuidad de Tamazunchale, San Luis Potosi.\n\nInformación del Menú:\n\nPLATILLOS:\n\nGuisados:\n\nPuerco en salsa\n\nPollo enchilado\n\nBistek a la mexicana\n\nChicharrón en salsa\n\nChicharrón prensado\n\nBarbacoa\n_________________________________________________________________\n\nOtros Antojitos:\n\nFlautas: Orden de 5 ($35), Orden de 8 ($50)\n\nHuaraches: ($60)\n\nTacos: ($50 la orden), Individual ($10)\n\nTostadas: Sencilla ($10)\n\nTostada con guisado: ($15)\n\nPellizcada con guisado: ($15)\n\nPellizcada sencilla: ($10)\n\nMoyetes: Orden ($25)\n_______________________________________________________________\n\nBEBIDAS:\n\nAguas Naturales de Fruta (Limón):\n\nLitro: ($30)\n\n1/2 Litro: ($20)\n___________________________________________________________\n\nSERVICIO ADICIONAL:\n\nDomicilio: Área Centro",
+    "knowledgeBasePath": "./dummy.json",
+    "tools": [
+      {
+        "functionDeclarations": []
+      }
+    ],
+    "geminiModel": "gemini-1.5-flash",
+    "maxHistoryTurns": 15
   }
 ]

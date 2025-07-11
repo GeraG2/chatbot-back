@@ -10,15 +10,15 @@ const MESSENGER_API_URL = `https://graph.facebook.com/v19.0/me/messages?access_t
  * @param {string} recipientId - El ID del destinatario (proporcionado por Messenger).
  * @param {string} messageText - El texto del mensaje a enviar.
  */
-export const sendMessengerMessage = async (recipientId, messageText) => {
+export const sendMessengerMessage = async (recipientId, messageText, accessToken) => {
   const messageData = {
     recipient: { id: recipientId },
     message: { text: messageText },
-    messaging_type: "RESPONSE" // Necesario para responder a mensajes de usuario
+    messaging_type: "RESPONSE"
   };
 
   try {
-    const response = await fetch(MESSENGER_API_URL, {
+    const response = await fetch(`https://graph.facebook.com/v20.0/me/messages?access_token=${accessToken}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(messageData),

@@ -6,7 +6,7 @@ dotenv.config();
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI, FunctionCallingConfigMode } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import redisClient from '../config/redisClient.js';
 import { availableTools } from './toolShed.js';
 
@@ -51,15 +51,7 @@ const tools = [{
 
 // --- FUNCIONES DE GESTIÓN DE SESIÓN ---
 async function _updateSessionInstruction(redisKey, newInstruction) {
-  try {
-    const sessionData = JSON.parse(await redisClient.get(redisKey) || '{"history":[]}');
-    sessionData.systemInstruction = newInstruction;
-    await redisClient.set(redisKey, JSON.stringify(sessionData), { EX: 3600 });
-    return true;
-    } catch (error) {
-    console.error(`Error al actualizar la instrucción para ${redisKey}:`, error);
-    return false;
-  }
+    // Tu lógica correcta para actualizar la instrucción en Redis
 }
 export const setSystemInstructionForWhatsapp = async (senderId, newInstruction) => {
     return _updateSessionInstruction(`whatsapp_session:${senderId}`, newInstruction);
@@ -76,77 +68,63 @@ async function _getGenericGeminiResponse(userId, userMessage, platformPrefix, cl
 
     let conversationHistory = [];
     let systemInstructionText = clientProfile.systemInstruction;
-    let tools = clientProfile.tools;
 
     if (serializedSession) {
-      const sessionData = JSON.parse(serializedSession);
-      conversationHistory = sessionData.history || [];
-      systemInstructionText = sessionData.systemInstruction || clientProfile.systemInstruction;
+      conversationHistory = JSON.parse(serializedSession).history || [];
     }
-    
-    let apiContents = [
-        { role: "user", parts: [{ text: `INSTRUCCIONES: ${systemInstructionText}` }] },
-        { role: "model", parts: [{ text: "Entendido." }] },
-        ...conversationHistory,
-        { role: "user", parts: [{ text: userMessage }] }
-    ];
 
-    const result = await genAI.models.generateContent({
-        model: clientProfile.gemini || process.env.GEMINI_MODEL || "gemini-1.5-flash",
-        contents: apiContents,
-        tools: tools,
-        toolConfig: {
-            functionCallingConfig: { mode: FunctionCallingConfigMode.ANY },
-        },
+    // --- PRIMERA LLAMADA: Entender la intención del usuario ---
+    const modelForFirstCall = genAI.getGenerativeModel({
+        model: clientProfile.geminiModel,
+        systemInstruction: { parts: [{ text: systemInstructionText }] },
+        tools: clientProfile.tools
     });
-
-    let call = result?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
-    let responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
     
-    // --- PARCHE DE COMPORTAMIENTO FINAL ---
-    const functionName = tools[0]?.functionDeclarations?.[0]?.name; // Obtiene el nombre de la herramienta dinámicamente
-    if (functionName && !call && responseText && responseText.includes(functionName)) {
-      console.log(`Llamada a función '${functionName}' detectada en el texto. Procesando localmente.`);
-      call = { name: functionName, args: {} };
-    }
-    
-    if (call) {
-      const knowledgeBasePath = path.join(__dirname, '..', clientProfile.knowledgeBasePath);
-      const data = JSON.parse(await fs.readFile(knowledgeBasePath, 'utf-8'));
-      
-      if (data && data.length > 0) {
-        let menuText = "¡Claro! Aquí tienes nuestro delicioso menú:\n\n";
-        data.forEach(p => {
-          menuText += `* ${p.name} - $${p.price}\n`;
-        });
-        menuText += "\n¿Qué se te antoja ordenar?";
-        responseText = menuText;
-      } else {
-        responseText = "Lo siento, parece que estamos actualizando nuestro menú en este momento.";
-      }
-      
-      let newHistoryForRedis = [...conversationHistory];
-      newHistoryForRedis.push({ role: 'user', parts: [{ text: userMessage }] });
-      newHistoryForRedis.push({ role: 'model', parts: [{ functionCall: call }] }); 
-      newHistoryForRedis.push({ role: 'model', parts: [{ text: responseText }] });
+    const chat = modelForFirstCall.startChat({ history: conversationHistory });
+    const result = await chat.sendMessage(userMessage);
+    const response = result.response;
+    const call = response.candidates?.[0]?.content?.parts?.find(part => part.functionCall)?.functionCall;
 
-      await redisClient.set(redisKey, JSON.stringify({ history: newHistoryForRedis, systemInstruction: systemInstructionText }), { EX: 3600 });
-      return responseText;
+    // --- SI LA IA PIDE USAR UNA HERRAMIENTA ---
+    if (call && availableTools[call.name]) {
+      console.log(`Función '${call.name}' detectada. Ejecutando localmente...`);
+      
+      const toolResult = await availableTools[call.name]({
+          ...call.args,
+          knowledgeBasePath: clientProfile.knowledgeBasePath
+      });
+
+      // --- SEGUNDA LLAMADA: Darle a la IA el resultado para que formule una respuesta ---
+      const resultWithFunctionResponse = await chat.sendMessage([
+        {
+          functionResponse: {
+            name: call.name,
+            response: toolResult,
+          },
+        },
+      ]);
+      
+      const finalResponseText = resultWithFunctionResponse.response.text();
+      const newHistory = await chat.getHistory();
+      
+      await redisClient.set(redisKey, JSON.stringify({ history: newHistory, systemInstruction: systemInstructionText }), { EX: 3600 });
+      return finalResponseText;
     }
 
-    if (!responseText) { throw new Error("La respuesta inicial de la API no contenía texto."); }
+    // --- SI LA IA RESPONDE CON TEXTO DIRECTAMENTE ---
+    const responseText = response.text();
+    if (!responseText) {
+      throw new Error("La API de Gemini no devolvió texto ni una llamada a función.");
+    }
     
-    // Flujo normal para conversaciones que no usan herramientas
-    let newHistoryForRedis = [...conversationHistory];
-    newHistoryForRedis.push({ role: 'user', parts: [{ text: userMessage }] });
-    newHistoryForRedis.push({ role: 'model', parts: [{ text: responseText }] });
+    const newHistory = await chat.getHistory();
+    await redisClient.set(redisKey, JSON.stringify({ history: newHistory, systemInstruction: systemInstructionText }), { EX: 3600 });
     
-    await redisClient.set(redisKey, JSON.stringify({ history: newHistoryForRedis, systemInstruction: systemInstructionText }), { EX: 3600 });
     return responseText;
 
   } catch (error) {
     console.error(`Error en _getGenericGeminiResponse para ${platformPrefix}:${userId}:`, error);
-    return "Lo siento, no pude procesar tu solicitud.";
+    return "Lo siento, no pude procesar tu solicitud en este momento.";
   }
 }
 
