@@ -130,7 +130,25 @@ async function _getGenericGeminiResponse(userId, userMessage, platformPrefix, cl
     }
 
     const firstPart = firstCandidate.content.parts[0];
-    const functionCall = firstPart.functionCall;
+    let functionCall = firstPart.functionCall; // Use 'let' to allow modification
+    const responseText = firstPart.text;
+
+    // --- SAFETY NET: Detect "Thinking Out Loud" ---
+    // If the model doesn't return a structured functionCall but mentions a tool name in its text response,
+    // manually create the functionCall object to force the tool execution path.
+    if (!functionCall && responseText) {
+      const toolNames = Object.keys(availableTools);
+      for (const toolName of toolNames) {
+        // Use a regex to avoid matching parts of other words.
+        // This looks for the tool name as a whole word.
+        const toolNameRegex = new RegExp(`\\b${toolName}\\b`, 'i');
+        if (toolNameRegex.test(responseText)) {
+          console.log(`[${redisKey}] "Thinking out loud" detected. Manually creating function call for tool: ${toolName}`);
+          functionCall = { name: toolName, args: {} }; // Assuming no args are parsed from text for simplicity
+          break; // Stop after finding the first match
+        }
+      }
+    }
 
     conversationHistory.push({ role: "user", parts: [{ text: userMessage }] });
 
@@ -166,17 +184,34 @@ async function _getGenericGeminiResponse(userId, userMessage, platformPrefix, cl
       conversationHistory.push(functionResponsePart);
 
       // --- SECOND CALL: With tool response to get final text summary ---
-      // System instruction is typically not needed for the second call if it's just summarizing tool output based on history.
-      // Tools are also not needed for the second call.
-      console.log(`[${redisKey}] Making second call to Gemini with genAI.models.generateContent. History length: ${conversationHistory.length}`);
+      // We explicitly guide the model to use the tool's output to answer the user's original question.
+      const contentsForSecondCall = [
+        ...conversationHistory,
+        {
+          role: "user",
+          parts: [{ text: "Excellent. Now, using the information from the tool's response, please formulate a final answer to my original question, speaking in character as defined by your system instructions." }]
+        }
+      ];
+
+      console.log(`[${redisKey}] Making second call to Gemini with explicit guidance. History length: ${contentsForSecondCall.length}`);
       const secondCallResult = await genAI.models.generateContent({
         model: modelName, // Still need to specify the model for the second call
-        contents: conversationHistory
+        contents: contentsForSecondCall
       });
 
-      // The response structure from generateContent is directly result.response
-      const secondCallResponse = secondCallResult.response;
-      const secondCandidate = secondCallResponse.candidates?.[0];
+      // The response structure from generateContent has candidates directly on the result object.
+      const secondCallResponse = secondCallResult;
+
+      // Add validation for the second response
+      if (!secondCallResponse || !secondCallResponse.candidates || secondCallResponse.candidates.length === 0) {
+        console.error(`[${redisKey}] Invalid response structure or no candidates in secondCallResult:`, JSON.stringify(secondCallResponse, null, 2));
+        finalResponseText = "Lo siento, tuve un problema al procesar la respuesta de la herramienta (respuesta inválida de IA).";
+        // The history already includes the function call and response, so we just need to add the model's error message
+        conversationHistory.push({ role: "model", parts: [{ text: finalResponseText }] });
+        return finalResponseText;
+      }
+
+      const secondCandidate = secondCallResponse.candidates[0];
       finalResponseText = secondCandidate?.content?.parts?.[0]?.text;
 
       if (finalResponseText) {

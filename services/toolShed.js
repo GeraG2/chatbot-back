@@ -14,8 +14,14 @@ const __dirname = path.dirname(__filename);
  * @returns {object} - Un objeto con los resultados de la búsqueda.
  */
 async function searchKnowledgeBase(args) {
+  // The 'knowledgeBasePath' argument is now expected to be an absolute path passed from geminiService.js
+  const { knowledgeBasePath, itemName } = args;
+
+  if (!knowledgeBasePath) {
+    return { error: "knowledgeBasePath was not provided." };
+  }
+
   try {
-    const knowledgeBasePath = path.join(__dirname, '..', args.knowledgeBasePath);
     const data = JSON.parse(await fs.readFile(knowledgeBasePath, 'utf-8'));
     
     // El argumento 'itemName' es el que definimos en la herramienta en clients.json
