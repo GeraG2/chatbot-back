@@ -20,6 +20,7 @@ import messengerRoutes from './routes/messengerRoutes.js'; // <-- AÑADIR ESTA L
 // import adminRoutes from './routes/adminRoutes.js'; // Aún no se usa, pero está listo para la refactorización
 
 const app = express();
+const HOST = '0.0.0.0';
 const PORT = process.env.PORT || 5001;
 
 // --- CÁLCULO DE RUTAS ---
