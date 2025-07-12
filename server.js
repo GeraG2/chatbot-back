@@ -23,6 +23,7 @@ const app = express();
 const HOST = '0.0.0.0';
 const PORT = process.env.PORT || 5001;
 
+
 // --- CÁLCULO DE RUTAS ---
 // Calculamos __dirname de la forma moderna para Módulos ES
 const __filename = fileURLToPath(import.meta.url);
@@ -438,8 +439,7 @@ app.delete('/api/clients/:clientId/products/:productId', async (req, res) => {
     }
 });
 
-
-// --- Iniciar el servidor ---
-app.listen(PORT, () => {
-  console.log(`Servidor escuchando en el puerto ${PORT}`);
+// --- Iniciar el servidor http://0.0.0.0:5001 ---
+app.listen({ host: HOST, port: PORT }, () => {
+  console.log(`Servidor escuchando en http://${HOST}:${PORT}`);
 });
