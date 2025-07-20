@@ -7,7 +7,9 @@ import { createClient } from 'redis';
 console.log("Inicializando cliente de Redis centralizado...");
 
 // Creamos la instancia del cliente
-const redisClient = createClient();
+const redisClient = createClient({
+  url: process.env.REDIS_URL 
+});
 
 // Añadimos un listener para manejar errores de conexión en un solo lugar
 redisClient.on('error', (err) => {
