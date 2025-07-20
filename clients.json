@@ -12,7 +12,12 @@
     ],
     "knowledgeBasePath": "./dummy.json",
     "geminiModel": "gemini-1.5-flash",
-    "maxHistoryTurns": 10
+    "maxHistoryTurns": 10,
+    "googleAuth": {
+      "np": "ya29.a0AS3H6NyTk_BhG_eXyndhVDQKRfXepZ6OeXslD5l865mW1_aJZwx0XLp7L1-V6r0-6hZ1eeC7L1toin_BlNLCFoZW0UjRefihDX7Z8qW5RQgEsqLX_1OQHddl9jiVECRGHiELU7_tMF6W9Fo1k3R7zJ-ehAMMko4wO7IXIqYCaCgYKAdISARISFQHGX2MiJhCxNtctOgeAhYSbZvJtKQ0175",
+      "refreshToken": "1//0fVh7c---k5xwCgYIARAAGA8SNwF-L9IrSGJVOIFic7otTQKNZz1CpSwNyzMDNSSnoH-M0Lu5x8Ox3ybYPobhLNylCeLxKt-beX8",
+      "expiryDate": 1752708587016
+    }
   },
   {
     "clientId": "ID_DE_PAGINA_DE_AUTOS",
@@ -36,7 +41,7 @@
   {
     "clientId": "754381521082245",
     "clientName": "Tacos Polita",
-    "pageAccessToken": "EAAPG081aEU8BPJBHLF4c7OwxMTvUh2VJGO3NumEgJdZApQSvVvc1H6Cb6AU5UboZBRbZBhkwMN2xU2MkbVjsApYrXZASrbUyZCH5yc1sGKmZAHCXSZB7t7cqcL3nkHPoWdajt3wLhsrZC9Lj9MzHrCbTbM9DCr9R5kpkBgLGxsqINoafW2LRVkabLxonOCbFEq34yLvvMG0OZCljsgKZB4lZBqalQZDZD|",
+    "pageAccessToken": "EAAPG081aEU8BPOfdGa2jt7OYRJxcJ8wiIZA9z7agOpkZCdOWKqxJHGmo5fgKzZA5eZCLq2ZCUInsCDq3oRVNbbX7oPzZBbn00g9JanOo6uzHsoD1Ds6htbek0o56UIHbesznVcaw3wu1jzooYdMXUHhYajZCTFdD6XuB7xp27xRfnT8SYo7vScGEmrB3JcXTDOpjnXXCilUbT58tKZCWoFORIwZDZD",
     "platform": "messenger",
     "systemInstruction": "Eres 'Tacos Polita', una vendedora de tacos mexicana, amigable.\n\nSe breve para no llenar el chat con muchas palabras, siempre trata de repartir la informacion por partes cuando esta es mucha. \n\nCuando el usuario sea nuevo siempre dale la bienvenida a Tacos Polita. \n\nPara preguntas sobre el menú, te dejo la información:\n\nUbicad en la cuidad de Tamazunchale, San Luis Potosi.\n\nInformación del Menú:\n\nPLATILLOS:\n\nGuisados:\n\nPuerco en salsa\n\nPollo enchilado\n\nBistek a la mexicana\n\nChicharrón en salsa\n\nChicharrón prensado\n\nBarbacoa\n_________________________________________________________________\n\nOtros Antojitos:\n\nFlautas: Orden de 5 ($35), Orden de 8 ($50)\n\nHuaraches: ($60)\n\nTacos: ($50 la orden), Individual ($10)\n\nTostadas: Sencilla ($10)\n\nTostada con guisado: ($15)\n\nPellizcada con guisado: ($15)\n\nPellizcada sencilla: ($10)\n\nMoyetes: Orden ($25)\n_______________________________________________________________\n\nBEBIDAS:\n\nAguas Naturales de Fruta (Limón):\n\nLitro: ($30)\n\n1/2 Litro: ($20)\n___________________________________________________________\n\nSERVICIO ADICIONAL:\n\nDomicilio: Área Centro",
     "knowledgeBasePath": "./dummy.json",
@@ -47,5 +52,67 @@
     ],
     "geminiModel": "gemini-1.5-flash",
     "maxHistoryTurns": 15
+  },
+  {
+    "clientId": "466063503265809",
+    "clientName": "Reparacion de Boilers",
+    "platform": "messenger",
+    "systemInstruction": "Eres un tecnico en reparacion y mantenimiento de boilers de paso",
+    "knowledgeBasePath": "boilers.json",
+    "tools": [
+      {
+        "functionDeclarations": []
+      }
+    ],
+    "pageAccessToken": "EAAPG081aEU8BPP4ACHSUoTSbHoZCPN8c4X4I7xmJMFcPsbY9O9A0nBxY5AN2c0ecljHt8eMDQZAXu2FrkyOAbZBKn9ArCDg0cl2khX8IKbKaZBAgKKT3KBFLDepmvf5WajnChXdqm1RRDklKMZCnTrbpZAcJoGdaWXoZB6wXbwYvBrMN7ghE1oOOTbwGUdlURwXf0DMXrFWXlUsj7uBsgZDZD",
+    "geminiModel": "gemini-1.5-flash",
+    "maxHistoryTurns": 10
+  },
+  {
+    "clientId": "128969230291212",
+    "clientName": "Barbería Corte Preciso",
+    "pageAccessToken": "EAAPG081aEU8BPJrZAwr5LBiJ01HSyz1ypzNS4X2y70FaealJNT7vA4CYhdyqZA9Jx6ZClaA3Bau6oydkBmVw2ahy74JHvCiZAJO5ZATd3p82snjmXuziyfR3YPBPsmyrEAAWD33d8egLYtXKHDeTh7Wgt1O9hwIRF7kWDkIDw5rdsZBZB7ET16mKp4VSQ9cWGoZB99piDny9dZBqryTycfXgN",
+    "platform": "messenger",
+    "systemInstruction": "Eres un recepcionista virtual para la barbería 'Corte Preciso'. Tu ÚNICO objetivo es rellenar los argumentos para la herramienta 'scheduleAppointment'. Analiza el historial de la conversación para encontrar los valores para 'dateTime', 'customerName' y 'service'. Una vez que tengas los tres valores, tu única acción debe ser llamar a la función 'scheduleAppointment' con los argumentos que extrajiste. No converses más de lo necesario. Tu única misión es extraer los datos y llamar a la función.",
+    "geminiModel": "gemini-1.5-flash",
+    "maxHistoryTurns": 10,
+    "knowledgeBasePath": "barber.json",
+    "tools": [
+      {
+        "functionDeclarations": [
+        {
+          "name": "checkAvailability",
+          "description": "Usa esta herramienta PRIMERO para revisar el calendario y encontrar los horarios disponibles que le ofrecerás al usuario."
+        },
+        {
+          "name": "scheduleAppointment",
+          "description": "Usa esta herramienta ÚNICAMENTE cuando hayas recopilado los tres datos necesarios del usuario: la fecha/hora, su nombre y el servicio que desea.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "dateTime": {
+                "type": "STRING",
+                "description": "La fecha y hora de la cita en formato ISO 8601 (AAAA-MM-DDTHH:MM:SS). Debes inferir el año actual si no se especifica."
+              },
+              "customerName": {
+                "type": "STRING",
+                "description": "El nombre completo que el usuario proporcionó para la cita."
+              },
+              "service": {
+                "type": "STRING",
+                "description": "El servicio específico que el usuario solicitó, por ejemplo 'corte de cabello'."
+              }
+            },
+            "required": ["dateTime", "customerName", "service"]
+          }
+        }
+        ]
+      }
+    ],
+    "googleAuth": {
+      "accessToken": "ya29.a0AS3H6NyuGmj8tdANc1dtz8NjKV93UDZUw0zKCLvBloeX_25d5b6zmcxJLlwqYHbwKnLF5rLe0-XT4rqHcZdhPa81aSFmk4GOQZOghLYWumlvY0bSO1-byZNlk3qS4uXXr64S5_dWrU8-cEQUhL1dMestapypxRlDOAOP-7qFaCgYKAcISARUSFQHGX2Mibsxiu9oRvu_w2jcbr5XMHw0175",
+      "refreshToken": "1//0fzWS6gmL6E3CCgYIARAAGA8SNwF-L9IrtXR_h_6PtTx13hIujhQ35aJBfRvp7SzF4YfLzFz123NyBcD96OCMbekzy0LX6dWsFmg",
+      "expiryDate": 1752868934416
+    }
   }
 ]

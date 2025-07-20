@@ -30,7 +30,25 @@ loadClientsConfig();
 
 
 export const handleVerification = (req, res) => {
-    // ... tu lógica de verificación se mantiene igual ...
+    // Estos son los tres datos que Meta nos envía para la verificación
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  // Leemos nuestro token secreto desde las variables de entorno
+  const verifyToken = process.env.MESSENGER_VERIFY_TOKEN;
+
+  // Comprobamos si el modo es 'subscribe' y si el token que nos envían
+  // coincide con el nuestro.
+  if (mode && token && mode === 'subscribe' && token === verifyToken) {
+    console.log("✅ Webhook de Messenger verificado con éxito.");
+    // Si todo coincide, respondemos con el 'challenge' que nos enviaron.
+    res.status(200).send(challenge);
+  } else {
+    // Si no coincide, respondemos con un error de "Prohibido".
+    console.warn("⚠️ Falló la verificación del webhook de Messenger. Los tokens no coinciden.");
+    res.sendStatus(403);
+  }
 };
 
 

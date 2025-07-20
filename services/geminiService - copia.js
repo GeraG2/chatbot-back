@@ -6,7 +6,7 @@ dotenv.config();
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, FunctionCallingConfigMode } from "@google/genai";
 import redisClient from '../config/redisClient.js';
 import { availableTools } from './toolShed.js';
 
@@ -51,7 +51,15 @@ const tools = [{
 
 // --- FUNCIONES DE GESTIÓN DE SESIÓN ---
 async function _updateSessionInstruction(redisKey, newInstruction) {
-    // Tu lógica correcta para actualizar la instrucción en Redis
+  try {
+    const sessionData = JSON.parse(await redisClient.get(redisKey) || '{"history":[]}');
+    sessionData.systemInstruction = newInstruction;
+    await redisClient.set(redisKey, JSON.stringify(sessionData), { EX: 3600 });
+    return true;
+    } catch (error) {
+    console.error(`Error al actualizar la instrucción para ${redisKey}:`, error);
+    return false;
+  }
 }
 export const setSystemInstructionForWhatsapp = async (senderId, newInstruction) => {
     return _updateSessionInstruction(`whatsapp_session:${senderId}`, newInstruction);
@@ -71,62 +79,64 @@ async function _getGenericGeminiResponse(userId, userMessage, platformPrefix, cl
 
     if (serializedSession) {
       conversationHistory = JSON.parse(serializedSession).history || [];
+      systemInstructionText = sessionData.systemInstruction || clientProfile.systemInstruction;
     }
 
     // --- PRIMERA LLAMADA: Entender la intención del usuario ---
-    const modelForFirstCall = genAI.getGenerativeModel({
+    const result = await genAI.models.generateContent({
         model: clientProfile.geminiModel,
-        systemInstruction: { parts: [{ text: systemInstructionText }] },
-        tools: clientProfile.tools
+        contents: [...conversationHistory, { role: "user", parts: [{ text: userMessage }] }],
+        tools: clientProfile.tools ? [{ functionDeclarations: clientProfile.tools }] : undefined,
+        toolConfig: clientProfile.tools ? { functionCallingConfig: { mode: FunctionCallingConfigMode.ANY } } : undefined,
     });
-    
-    const chat = modelForFirstCall.startChat({ history: conversationHistory });
-    const result = await chat.sendMessage(userMessage);
-    const response = result.response;
-    const call = response.candidates?.[0]?.content?.parts?.find(part => part.functionCall)?.functionCall;
+
+    const call = result.response?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
 
     // --- SI LA IA PIDE USAR UNA HERRAMIENTA ---
     if (call && availableTools[call.name]) {
-      console.log(`Función '${call.name}' detectada. Ejecutando localmente...`);
+      console.log(`Función '${call.name}' detectada. Ejecutando desde toolShed...`);
       
       const toolResult = await availableTools[call.name]({
           ...call.args,
-          knowledgeBasePath: clientProfile.knowledgeBasePath
+          googleAuth: clientProfile.googleAuth
       });
 
       // --- SEGUNDA LLAMADA: Darle a la IA el resultado para que formule una respuesta ---
-      const resultWithFunctionResponse = await chat.sendMessage([
-        {
-          functionResponse: {
-            name: call.name,
-            response: toolResult,
-          },
-        },
-      ]);
-      
-      const finalResponseText = resultWithFunctionResponse.response.text();
-      const newHistory = await chat.getHistory();
-      
-      await redisClient.set(redisKey, JSON.stringify({ history: newHistory, systemInstruction: systemInstructionText }), { EX: 3600 });
+      const secondResult = await genAI.models.generateContent({
+          model: clientProfile.geminiModel,
+          contents: [
+              ...conversationHistory,
+              { role: "user", parts: [{ text: userMessage }] },
+              { role: "model", parts: [{ functionCall: call }] },
+              { role: "function", parts: [{ functionResponse: { name: call.name, response: toolResult } }] }
+          ],
+      });
+
+      const finalResponseText = secondResult.response.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (finalResponseText) {
+        conversationHistory.push({ role: "model", parts: [{ text: finalResponseText }] });
+      } else {
+        console.warn(`[${redisKey}] Second call to Gemini did not return text. Storing placeholder.`);
+        conversationHistory.push({ role: "model", parts: [{ text: "Action processed. No further text response from AI." }] });
+        finalResponseText = "Action processed.";
+      }
+    } else {
+      finalResponseText = firstPart.text;
+      if (finalResponseText) {
+        conversationHistory.push({ role: "model", parts: [{ text: finalResponseText }] });
+      } else {
+        console.warn(`[${redisKey}] First call did not return text and no function call. Response:`, JSON.stringify(firstCallResponse));
+        finalResponseText = "I received your message, but I don't have a specific text response for you right now.";
+        conversationHistory.push({ role: "model", parts: [{ text: finalResponseText }] });
+      }
+    };
       return finalResponseText;
-    }
-
-    // --- SI LA IA RESPONDE CON TEXTO DIRECTAMENTE ---
-    const responseText = response.text();
-    if (!responseText) {
-      throw new Error("La API de Gemini no devolvió texto ni una llamada a función.");
-    }
-    
-    const newHistory = await chat.getHistory();
-    await redisClient.set(redisKey, JSON.stringify({ history: newHistory, systemInstruction: systemInstructionText }), { EX: 3600 });
-    
-    return responseText;
-
-  } catch (error) {
+    } catch (error) {
     console.error(`Error en _getGenericGeminiResponse para ${platformPrefix}:${userId}:`, error);
-    return "Lo siento, no pude procesar tu solicitud en este momento.";
+    return "Lo siento, no pude procesar tu solicitud.";
   }
 }
+
 
 // --- FUNCIONES PÚBLICAS "ADAPTADORAS" ---
 export const getGeminiResponseForWhatsapp = (senderId, userMessage, clientProfile) => {

@@ -1,0 +1,14 @@
+[
+  {
+    "id": "serv-001",
+    "name": "Mantenimiento Preventivo",
+    "description": "Incluye limpieza de filtros, revisión de niveles de gas, lubricación de partes móviles y una inspección general para asegurar el óptimo funcionamiento.",
+    "price": 700
+  },
+  {
+    "id": "serv-002",
+    "name": "Mantenimiento Correctivo",
+    "description": "Diagnóstico y reparación de fallas específicas. No incluye el costo de las refacciones. Ideal para equipos que no enfrían o hacen ruidos extraños.",
+    "price": 950
+  }
+]

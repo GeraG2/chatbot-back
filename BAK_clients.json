@@ -1,0 +1,63 @@
+[
+  {
+    "clientId": "266116829920369",
+    "clientName": "Mantenimiento",
+    "pageAccessToken": "EAAPG081aEU8BO313LAMs49RW3Xcfd6GvvDatZCNpPy5KpCZAnlRNvl4gYr3rovZB0H9JDsVV5DbwdMa4BGyyKyME8g75h34OtOPvPsa80lojUCnqFNShlXRKx44pwhSrQDZAnCn5ZBtMnHFeuDMEPXlMyW8bfgtYZBcbLOGxi7yGpMGGHM7sGXsCmV0VkjLG1HhagxMuyuXZA9zOBxy",
+    "platform": "messenger",
+    "systemInstruction": "Eres un técnico experto y amable de 'Climas del Norte'. Tu objetivo es explicar nuestros servicios y ayudar a los clientes a entender qué mantenimiento necesitan. Usa tu herramienta 'searchKnowledgeBase' para consultar los detalles de los servicios.",
+    "geminiModel": "gemini-1.5-flash",
+    "maxHistoryTurns": 10,
+    "knowledgeBasePath": "./ac_services.json",
+    "tools": [
+      {
+        "functionDeclarations": [{
+          "name": "searchKnowledgeBase",
+          "description": "Busca en la lista de servicios de mantenimiento para obtener detalles, precios o qué incluye cada uno.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "itemName": {
+                "type": "STRING",
+                "description": "El tipo de servicio a buscar, por ejemplo 'preventivo' o 'correctivo'."
+              }
+            }
+          }
+        }]
+      }
+    ]
+  },
+  {
+    "clientId": "ID_DE_PAGINA_DE_AUTOS",
+    "clientName": "Autos de Lujo Monterrey",
+    "platform": "messenger",
+    "systemInstruction": "Eres 'AutoBot', un experto en coches.",
+    "tools": [
+      {
+        "functionDeclarations": [
+          {
+            "name": "searchKnowledgeBase",
+            "description": "Busca en el inventario de vehículos."
+          }
+        ]
+      }
+    ],
+    "knowledgeBasePath": "./vehicles.json",
+    "geminiModel": "gemini-1.5-flash",
+    "maxHistoryTurns": 15
+  },
+  {
+    "clientId": "754381521082245",
+    "clientName": "Tacos Polita",
+    "pageAccessToken": "EAAPG081aEU8BPJBHLF4c7OwxMTvUh2VJGO3NumEgJdZApQSvVvc1H6Cb6AU5UboZBRbZBhkwMN2xU2MkbVjsApYrXZASrbUyZCH5yc1sGKmZAHCXSZB7t7cqcL3nkHPoWdajt3wLhsrZC9Lj9MzHrCbTbM9DCr9R5kpkBgLGxsqINoafW2LRVkabLxonOCbFEq34yLvvMG0OZCljsgKZB4lZBqalQZDZD",
+    "platform": "messenger",
+    "systemInstruction": "Eres 'Tacos Polita', una vendedora de tacos mexicana, amigable.\n\nSe breve para no llenar el chat con muchas palabras, siempre trata de repartir la informacion por partes cuando esta es mucha. \n\nCuando el usuario sea nuevo siempre dale la bienvenida a Tacos Polita. \n\nPara preguntas sobre el menú, te dejo la información:\n\nUbicad en la cuidad de Tamazunchale, San Luis Potosi.\n\nInformación del Menú:\n\nPLATILLOS:\n\nGuisados:\n\nPuerco en salsa\n\nPollo enchilado\n\nBistek a la mexicana\n\nChicharrón en salsa\n\nChicharrón prensado\n\nBarbacoa\n_________________________________________________________________\n\nOtros Antojitos:\n\nFlautas: Orden de 5 ($35), Orden de 8 ($50)\n\nHuaraches: ($60)\n\nTacos: ($50 la orden), Individual ($10)\n\nTostadas: Sencilla ($10)\n\nTostada con guisado: ($15)\n\nPellizcada con guisado: ($15)\n\nPellizcada sencilla: ($10)\n\nMoyetes: Orden ($25)\n_______________________________________________________________\n\nBEBIDAS:\n\nAguas Naturales de Fruta (Limón):\n\nLitro: ($30)\n\n1/2 Litro: ($20)\n___________________________________________________________\n\nSERVICIO ADICIONAL:\n\nDomicilio: Área Centro",
+    "knowledgeBasePath": "./dummy.json",
+    "tools": [
+      {
+        "functionDeclarations": []
+      }
+    ],
+    "geminiModel": "gemini-1.5-flash",
+    "maxHistoryTurns": 15
+  }
+]

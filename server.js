@@ -6,13 +6,35 @@ import cors from 'cors';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { google } from 'googleapis';
+
+// Creamos el cliente de OAuth2 global (para generar URLs de autenticación)
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  `${process.env.API_BASE_URL || 'http://localhost:5001'}/api/google/auth/callback`
+);
+
+// Función utilitaria para crear un cliente autenticado con los tokens de un usuario
+function createAuthClient(authData) {
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET
+  );
+  oauth2Client.setCredentials({
+    access_token: authData.accessToken,
+    refresh_token: authData.refreshToken,
+    expiry_date: authData.expiryDate,
+  });
+  return oauth2Client;
+}
 
 // --- Importaciones de Módulos Locales ---
 // Asume que el cliente de Redis está centralizado. Si no, descomenta la inicialización de abajo.
 import redisClient from './config/redisClient.js';
 import {
     setSystemInstructionForWhatsapp,
-    setSystemInstructionForMessenger, // <-- Importarla aquí también
+    setSystemInstructionForMessenger,
     getTestResponse
 } from './services/geminiService.js';
 import whatsappRoutes from './routes/whatsappRoutes.js';
@@ -29,7 +51,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // --- Constantes de Rutas de Archivos ---
-const PRODUCTS_PATH = './products.json';
 const CONFIG_FILE_PATH = './config.json';
 const CLIENTS_FILE_PATH = path.join(__dirname, 'clients.json');
 
@@ -70,7 +91,8 @@ app.use((req, res, next) => {
 
 // --- Rutas Principales ---
 app.use('/api/whatsapp', whatsappRoutes);
-app.use('/api/messenger', messengerRoutes); // <-- AÑADIR ESTA LÍNEA
+app.use('/api/messenger', messengerRoutes);
+
 // app.use('/api/admin', adminRoutes); // Listo para cuando muevas la lógica
 
 
@@ -108,7 +130,6 @@ app.post('/api/test-prompt', async (req, res) => {
 
 // --- Rutas para Módulo 2: Monitor de Chats en Vivo (OMNICANAL COMPLETO) ---
 
-// Esta ruta ya está perfecta y no necesita cambios.
 app.get('/api/sessions', async (req, res) => {
   try {
     const [whatsappKeys, messengerKeys] = await Promise.all([
@@ -436,6 +457,175 @@ app.delete('/api/clients/:clientId/products/:productId', async (req, res) => {
         console.error(`Error al eliminar el producto ${productId} para el cliente ${clientId}:`, error);
         res.status(500).json({ message: 'Error al eliminar el producto.' });
     }
+});
+
+
+
+// --- Rutas para Módulo 6: Agenda de citas en Google Calendar ---
+
+// Ruta para INICIAR el flujo de autenticación de Google
+app.get('/api/google/auth/start/:clientId', async (req, res) => {
+  try {
+    const { clientId } = req.params;
+
+    // 1. Definimos los "permisos" (s) que nuestra app necesita.
+    // En este caso, permiso completo para leer y escribir en el calendario.
+    const scopes = [
+      'https://www.googleapis.com/auth/calendar'
+    ];
+
+    // 2. Generamos la URL a la que enviaremos al usuario en el frontend.
+    const authUrl = oauth2Client.generateAuthUrl({
+      access_type: 'offline', // MUY IMPORTANTE: Para obtener un refresh_token
+      scope: scopes,
+      // Usamos el 'state' para recordar para quién es esta autenticación.
+      // Google nos devolverá este mismo valor en el callback.
+      state: clientId 
+    });
+
+    console.log(`Redirigiendo al cliente ${clientId} a la URL de autenticación de Google.`);
+    // 3. Redirigimos al usuario a esa URL
+    res.redirect(authUrl);
+
+  } catch (error) {
+    console.error('Error al generar la URL de autenticación:', error);
+    res.status(500).send('Error al iniciar el proceso de autenticación.');
+  }
+});
+
+// Esta ruta maneja el código CALLBACK de autorización de Google y GUARDA los tokens
+app.get('/api/google/auth/callback', async (req, res) => {
+    try {
+        // 1. Obtenemos el código y el 'state' que nos devuelve Google
+        const { code, state } = req.query;
+        const clientId = state; // El 'state' contiene el ID del cliente que inició el proceso
+
+        if (!code || !clientId) {
+            return res.status(400).send('Falta el código de autorización o el ID del cliente.');
+        }
+
+        // 2. Intercambiamos el código por los tokens
+        const { tokens } = await oauth2Client.getToken(code);
+        console.log(`Tokens obtenidos de Google para el cliente ${clientId}:`, tokens);
+
+        // --- LÓGICA DE GUARDADO EN LA BASE DE DATOS ---
+
+        // 3. Leemos nuestro registro de clientes
+        const clientsData = JSON.parse(await fs.readFile(CLIENTS_FILE_PATH, 'utf-8'));
+        
+        // 4. Buscamos al cliente correcto por su ID
+        const clientIndex = clientsData.findIndex(c => c.clientId === clientId);
+
+        if (clientIndex === -1) {
+            return res.status(404).send('Cliente no encontrado en la base de datos.');
+        }
+
+        // 5. Añadimos los tokens al perfil de ese cliente
+        // Guardamos el refresh_token (que es permanente) y el expiry_date.
+        clientsData[clientIndex].googleAuth = {
+            accessToken: tokens.access_token,
+            refreshToken: tokens.refresh_token,
+            expiryDate: tokens.expiry_date,
+        };
+
+        // 6. Guardamos el archivo clients.json actualizado
+        await fs.writeFile(CLIENTS_FILE_PATH, JSON.stringify(clientsData, null, 2));
+        
+        console.log(`✅ Tokens de Google guardados con éxito para el cliente ${clientId}.`);
+        
+        // --- FIN DE LA NUEVA LÓGICA ---
+
+        // 7. Le mostramos un mensaje de éxito al usuario
+        res.send('¡Autenticación con Google Calendar exitosa! Ya puedes cerrar esta ventana.');
+
+    } catch (error) {
+        console.error('Error al obtener o guardar los tokens de Google:', error);
+        res.status(500).send('Error de autenticación.');
+    }
+});
+
+// GET /api/clients/:clientId/appointments - Obtiene las citas de un cliente
+app.get('/api/clients/:clientId/appointments', async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const clientsData = JSON.parse(await fs.readFile(CLIENTS_FILE_PATH, 'utf-8'));
+    
+    const client = clientsData.find(c => c.clientId === clientId);
+    if (!client || !client.googleAuth) {
+      return res.status(404).json({ message: 'Este cliente no tiene un calendario conectado.' });
+    }
+
+    // Creamos un cliente de autenticación con los tokens guardados del cliente
+    function createAuthClient(authData) {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET
+    );
+    oauth2Client.setCredentials({
+    access_token: authData.accessToken,
+    refresh_token: authData.refreshToken,
+    expiry_date: authData.expiryDate,
+  });
+    return oauth2Client;
+  }  
+    const calendar = google.calendar({ version: 'v3', auth: createAuthClient(client.googleAuth) });
+
+    // Pedimos los eventos de los próximos 30 días
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+
+    const response = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin: (new Date()).toISOString(),
+      timeMax: thirtyDaysFromNow.toISOString(),
+      maxResults: 50,
+      singleEvents: true,
+      orderBy: 'startTime',
+    });
+
+    res.json(response.data.items || []);
+
+  } catch (error) {
+    console.error(`Error al obtener citas para el cliente ${req.params.clientId}:`, error);
+    res.status(500).json({ message: 'Error al obtener las citas del calendario.' });
+  }
+});
+
+
+// DELETE /api/clients/:clientId/appointments/:appointmentId - Cancela una cita
+app.delete('/api/clients/:clientId/appointments/:appointmentId', async (req, res) => {
+  try {
+    const { clientId, appointmentId } = req.params;
+    const clientsData = JSON.parse(await fs.readFile(CLIENTS_FILE_PATH, 'utf-8'));
+
+    const client = clientsData.find(c => c.clientId === clientId);
+    if (!client || !client.googleAuth) {
+      return res.status(404).json({ message: 'Este cliente no tiene un calendario conectado.' });
+    }
+
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET
+    );
+    oauth2Client.setCredentials({
+    access_token: authData.accessToken,
+    refresh_token: authData.refreshToken,
+    expiry_date: authData.expiryDate,
+  });
+    
+    const calendar = google.calendar({ version: 'v3', auth: createAuthClient(client.googleAuth) });
+
+    await calendar.events.delete({
+      calendarId: 'primary',
+      eventId: appointmentId,
+    });
+
+    res.json({ message: 'Cita cancelada con éxito.' });
+
+  } catch (error) {
+    console.error(`Error al cancelar la cita ${req.params.appointmentId}:`, error);
+    res.status(500).json({ message: 'Error al cancelar la cita.' });
+  }
 });
 
 
