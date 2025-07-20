@@ -544,6 +544,8 @@ app.get('/api/google/auth/callback', async (req, res) => {
     }
 });
 
+import { createCalendarEvent, updateCalendarEvent, createAuthClient as createGoogleAuthClient } from './services/googleService.js';
+
 // GET /api/clients/:clientId/appointments - Obtiene las citas de un cliente
 app.get('/api/clients/:clientId/appointments', async (req, res) => {
   try {
@@ -555,22 +557,9 @@ app.get('/api/clients/:clientId/appointments', async (req, res) => {
       return res.status(404).json({ message: 'Este cliente no tiene un calendario conectado.' });
     }
 
-    // Creamos un cliente de autenticación con los tokens guardados del cliente
-    function createAuthClient(authData) {
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET
-    );
-    oauth2Client.setCredentials({
-    access_token: authData.accessToken,
-    refresh_token: authData.refreshToken,
-    expiry_date: authData.expiryDate,
-  });
-    return oauth2Client;
-  }  
-    const calendar = google.calendar({ version: 'v3', auth: createAuthClient(client.googleAuth) });
+    const auth = createGoogleAuthClient(client.googleAuth);
+    const calendar = google.calendar({ version: 'v3', auth });
 
-    // Pedimos los eventos de los próximos 30 días
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
@@ -591,6 +580,43 @@ app.get('/api/clients/:clientId/appointments', async (req, res) => {
   }
 });
 
+// POST /api/clients/:clientId/appointments - Crea una nueva cita
+app.post('/api/clients/:clientId/appointments', async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const clientsData = JSON.parse(await fs.readFile(CLIENTS_FILE_PATH, 'utf-8'));
+
+    const client = clientsData.find(c => c.clientId === clientId);
+    if (!client || !client.googleAuth) {
+      return res.status(404).json({ message: 'Este cliente no tiene un calendario conectado.' });
+    }
+
+    const event = await createCalendarEvent(client.googleAuth, req.body);
+    res.status(201).json(event);
+  } catch (error) {
+    console.error(`Error al crear cita para el cliente ${req.params.clientId}:`, error);
+    res.status(500).json({ message: 'Error al crear la cita.' });
+  }
+});
+
+// PUT /api/clients/:clientId/appointments/:appointmentId - Actualiza una cita
+app.put('/api/clients/:clientId/appointments/:appointmentId', async (req, res) => {
+  try {
+    const { clientId, appointmentId } = req.params;
+    const clientsData = JSON.parse(await fs.readFile(CLIENTS_FILE_PATH, 'utf-8'));
+
+    const client = clientsData.find(c => c.clientId === clientId);
+    if (!client || !client.googleAuth) {
+      return res.status(404).json({ message: 'Este cliente no tiene un calendario conectado.' });
+    }
+
+    const updatedEvent = await updateCalendarEvent(client.googleAuth, appointmentId, req.body);
+    res.json(updatedEvent);
+  } catch (error) {
+    console.error(`Error al actualizar la cita ${req.params.appointmentId}:`, error);
+    res.status(500).json({ message: 'Error al actualizar la cita.' });
+  }
+});
 
 // DELETE /api/clients/:clientId/appointments/:appointmentId - Cancela una cita
 app.delete('/api/clients/:clientId/appointments/:appointmentId', async (req, res) => {
@@ -603,17 +629,8 @@ app.delete('/api/clients/:clientId/appointments/:appointmentId', async (req, res
       return res.status(404).json({ message: 'Este cliente no tiene un calendario conectado.' });
     }
 
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET
-    );
-    oauth2Client.setCredentials({
-    access_token: authData.accessToken,
-    refresh_token: authData.refreshToken,
-    expiry_date: authData.expiryDate,
-  });
-    
-    const calendar = google.calendar({ version: 'v3', auth: createAuthClient(client.googleAuth) });
+    const auth = createGoogleAuthClient(client.googleAuth);
+    const calendar = google.calendar({ version: 'v3', auth });
 
     await calendar.events.delete({
       calendarId: 'primary',

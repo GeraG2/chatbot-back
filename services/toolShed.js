@@ -39,25 +39,9 @@ async function searchKnowledgeBase(args, clientProfile) {
 
 
 
+import { createCalendarEvent, updateCalendarEvent, createAuthClient } from './googleService.js';
+
 // --- NUEVAS HERRAMIENTAS DE GOOGLE CALENDAR ---
-
-/**
- * Crea un cliente de OAuth2 autenticado para un cliente específico.
- * @param {object} authData - El objeto googleAuth del perfil del cliente.
- */
-function createAuthClient(authData) {
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET
-  );
-  oauth2Client.setCredentials({
-    access_token: authData.accessToken,
-    refresh_token: authData.refreshToken,
-    expiry_date: authData.expiryDate,
-  }); // Usa los tokens guardados del cliente
-  return oauth2Client;
-}
-
 
 /**
  * Revisa la disponibilidad en un calendario para una fecha específica.
@@ -132,53 +116,17 @@ async function checkAvailability(args) {
  */
 async function scheduleAppointment(args) {
   try {
-    console.log("Radiografía de args:");
-    console.dir(args, { depth: null });
-    // --- VALIDACIÓN AÑADIDA ---
     if (!args.dateTime || !args.customerName || !args.service) {
       return { error: "Faltan datos para agendar. Necesito la fecha, la hora, tu nombre y el servicio que deseas." };
     }
-    
-    
-    // --- INICIO DE LA MODIFICACIÓN ---
 
-    // 1. Forzamos la renovación del token si está a punto de expirar.
-    // La librería debería hacer esto automáticamente, pero forzarlo nos ayuda a depurar.
-    const auth = createAuthClient(args.googleAuth);
-    await auth.getAccessToken(); 
-    console.log("Tokens de acceso actualizados antes de la llamada.");
-    const calendar = google.calendar({ version: 'v3', auth });
-
-    // --- FIN DE LA MODIFICACIÓN ---
-
-    const startTime = new Date(args.dateTime);
-    // Asumimos que cada cita dura 1 hora, si tiene otra duración, se debe especificar.
-    const endTime = new Date(startTime.getTime() + 60 * 60 * 1000);
-
-    const event = {
-      summary: `${args.service} - ${args.customerName}`,
-      description: `Cita agendada por Nexus Bot. Cliente: ${args.customerName}.`,
-      start: { dateTime: startTime.toISOString(), timeZone: 'America/Mexico_City' },
-      end: { dateTime: endTime.toISOString(), timeZone: 'America/Mexico_City' },
-    };
-
-    // --- INICIO DEL CÓDIGO DE DEPURACIÓN ---
-    console.log("\n--- 🕵️ Enviando el siguiente evento a Google Calendar: 🕵️ ---");
-    console.log(JSON.stringify(event, null, 2));
-    console.log("----------------------------------------------------------\n");
-
-    const response = await calendar.events.insert({
-      calendarId: 'primary',
-      resource: event,
+    const event = await createCalendarEvent(args.googleAuth, {
+      dateTime: args.dateTime,
+      customerName: args.customerName,
+      service: args.service,
     });
 
-    console.log("\n--- ✅ Respuesta COMPLETA de la API de Google Calendar: ✅ ---");
-    // Usamos console.dir para ver el objeto completo, no solo el texto
-    console.dir(response, { depth: null }); 
-    console.log("----------------------------------------------------------\n");
-    // --- FIN DEL CÓDIGO DE DEPURACIÓN ---
-
-    return { status: 'success', eventLink: response.data.htmlLink };
+    return { status: 'success', eventLink: event.htmlLink };
   } catch (error) {
     console.error("Error en scheduleAppointment:", error);
     return { error: `No se pudo agendar la cita. Razón: ${error.message}` };
